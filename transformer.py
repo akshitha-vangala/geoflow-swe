@@ -1,5 +1,27 @@
 from lark import Transformer
 
+class Mode:
+    def __init__(self, name, speed=None, cost=None, payload_capacity=None):
+        self.name = name
+        self.speed = speed
+        self.cost = cost
+        self.payload_capacity = payload_capacity
+
+    def __repr__(self):
+        return f"Mode(name={self.name}, speed={self.speed}, cost={self.cost}, payload={self.payload_capacity})"
+
+
+class Node:
+    def __init__(self, name, loc=None, allows=None, schedule_windows=None):
+        self.name = name
+        self.loc = loc
+        self.allows = allows or []
+        self.schedule_windows = schedule_windows or []
+
+    def __repr__(self):
+        return f"Node(name={self.name}, loc={self.loc}, allows={self.allows})"
+
+
 class Context:
     def __init__(self):
         self.nodes = {}
@@ -7,15 +29,15 @@ class Context:
         self.geofences = {}
         self.missions = {}
 
-    def add_mode(self, name, props):
-        if name in self.modes:
-            raise Exception(f"Mode '{name}' already defined")
-        self.modes[name] = props
+    def add_mode(self, mode):
+        if mode.name in self.modes:
+            raise Exception(f"Mode '{mode.name}' already defined")
+        self.modes[mode.name] = mode
 
-    def add_node(self, name, props):
-        if name in self.nodes:
-            raise Exception(f"Node '{name}' already defined")
-        self.nodes[name] = props
+    def add_node(self, node):
+        if node.name in self.nodes:
+            raise Exception(f"Node '{node.name}' already defined")
+        self.nodes[node.name] = node
 
     def add_geofence(self, name, props):
         if name in self.geofences:
@@ -30,6 +52,7 @@ class Context:
             "monitors": monitor_blocks
         }
 
+
 class DSLTransformer(Transformer):
     def __init__(self, context):
         self.context = context
@@ -37,7 +60,7 @@ class DSLTransformer(Transformer):
     def IDENTIFIER(self, token):
         return str(token)
 
-    def SIGNED_NUMBER(self, token):
+    def NUMBER(self, token):
         return float(token)
 
     def BOOLEAN(self, token):
@@ -55,9 +78,15 @@ class DSLTransformer(Transformer):
     def mode_decl(self, items):
         name = items[0]
         props = dict(items[1:])
-        self.context.add_mode(name, props)
-    
-    def mode_prop(self,items):
+        mode = Mode(
+            name=name,
+            speed=props.get("speed"),
+            cost=props.get("cost"),
+            payload_capacity=props.get("payload_capacity")
+        )
+        self.context.add_mode(mode)
+
+    def mode_prop(self, items):
         return items[0]
 
     def speed_prop(self, items):
@@ -72,11 +101,17 @@ class DSLTransformer(Transformer):
     def node_decl(self, items):
         name = items[0]
         props = dict(items[1:])
-        self.context.add_node(name, props)
+        node = Node(
+            name=name,
+            loc=props.get("loc"),
+            allows=props.get("allows"),
+            schedule_windows=props.get("schedule_windows")
+        )
+        self.context.add_node(node)
 
-    def node_prop(self,items):
+    def node_prop(self, items):
         return items[0]
-    
+
     def loc_prop(self, items):
         return ("loc", items[0])
 
@@ -91,9 +126,9 @@ class DSLTransformer(Transformer):
         props = dict(items[1:])
         self.context.add_geofence(name, props)
 
-    def geofence_prop(self,items):
+    def geofence_prop(self, items):
         return items[0]
-    
+
     def bounds_prop(self, items):
         return ("bounds", items[0])
 
@@ -119,7 +154,7 @@ class DSLTransformer(Transformer):
 
     def start_time_prop(self, items):
         return ("start_time", items[0])
-    
+
     def optimize_prop(self, items):
         return ("optimize", items[0])
 
@@ -127,13 +162,10 @@ class DSLTransformer(Transformer):
         return (f"limit_{items[0]}", items[1])
 
     def monitor_block(self, items):
-        name = items[0]
-        trigger = items[1]
-        fallback = items[2]
         return {
-            "name": name,
-            "trigger": trigger,
-            "fallback": fallback
+            "name": items[0],
+            "trigger": items[1],
+            "fallback": items[2]
         }
 
     def trigger_stmt(self, items):
@@ -150,6 +182,9 @@ class DSLTransformer(Transformer):
             "name": name,
             **props
         }
+
+    def render_prop(self, items):
+        return items[0]
 
     def execution_prop(self, items):
         return ("execution", str(items[0]))
