@@ -1,0 +1,72 @@
+program : statement+
+
+statement : node_decl
+          | mode_decl
+          | geofence_decl
+          | reactive_mission
+          | render_stmt
+
+mode_decl : "mode" IDENTIFIER "{" mode_prop+ "}"
+mode_prop : speed_prop | cost_prop | payload_prop
+speed_prop : "speed" ":" NUMBER
+cost_prop : "cost" ":" NUMBER
+payload_prop : "payload_capacity" ":" NUMBER
+
+node_decl : "node" IDENTIFIER "{" node_prop+ "}"
+node_prop : loc_prop | allows_prop | schedule_prop
+loc_prop : "loc" ":" coordinate
+allows_prop : "allows" ":" list
+schedule_prop : "schedule_windows" ":" list
+
+geofence_decl : "geofence" IDENTIFIER "{" geofence_prop+ "}"
+geofence_prop : bounds_prop | blocks_prop
+bounds_prop : "bounds" ":" coord_list
+blocks_prop : "blocks" ":" list
+
+reactive_mission : "mission" IDENTIFIER "{" mission_prop+ monitor_block* "}"
+
+mission_prop : from_prop
+             | to_prop
+             | start_time_prop
+             | optimize_prop
+             | limit_prop
+
+from_prop : "from" ":" IDENTIFIER
+to_prop : "to" ":" IDENTIFIER
+start_time_prop : "start_time" ":" TIME
+
+optimize_prop : "optimize" ":" IDENTIFIER
+limit_prop : "limit" IDENTIFIER ":" NUMBER
+
+monitor_block : "monitor" IDENTIFIER "{" trigger_stmt fallback_stmt "}"
+trigger_stmt : "trigger" ":" CONDITION
+fallback_stmt : "fallback" ":" ACTION
+
+render_stmt : "render" IDENTIFIER "{" render_prop+ "}"
+render_prop : execution_prop
+            | timeline_prop
+            | sim_speed_prop
+            | nodes_prop
+            | export_prop
+
+execution_prop : "execution" ":" ("static" | "dynamic")
+timeline_prop : "timeline" ":" BOOLEAN
+sim_speed_prop : "sim_speed" ":" NUMBER "x"
+nodes_prop : "show_nodes" ":" BOOLEAN
+export_prop : "export_html" ":" STRING
+
+TIME : /([01][0-9]|2[0-3]):[0-5][0-9]/
+CONDITION : /[a-zA-Z][a-zA-Z0-9_]*(<|>|==)-?[0-9]+|late_for\s+[a-zA-Z][a-zA-Z0-9_]*/
+ACTION : "reroute" | "wait" | "return_to_base"
+
+coordinate : "(" NUMBER "," NUMBER ")"
+coord_list : "[" coordinate ("," coordinate)* "]"
+list : "[" IDENTIFIER ("," IDENTIFIER)* "]"
+
+BOOLEAN : "true" | "false"
+IDENTIFIER : /[a-zA-Z][a-zA-Z0-9_]*/
+NUMBER : /-?[0-9]+(\.[0-9]+)?/
+STRING : /"[^"]*"/
+
+%import common.WS
+%ignore WS
