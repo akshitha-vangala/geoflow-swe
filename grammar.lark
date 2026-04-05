@@ -1,27 +1,54 @@
+
+// Supports declarative world definitions + imperative program blocks
+
 program : statement+
 
 statement : node_decl
           | mode_decl
           | geofence_decl
+          | hub_decl
           | reactive_mission
           | render_stmt
+          | route_decl
+          | program_block
+
+// ─── Declarative World ──────────────────────────────────────────────────────
 
 mode_decl : "mode" IDENTIFIER "{" mode_prop+ "}"
-mode_prop : speed_prop | cost_prop | payload_prop
+mode_prop : speed_prop | cost_prop | payload_prop | build_cost_prop
 speed_prop : "speed" ":" NUMBER
 cost_prop : "cost" ":" NUMBER
 payload_prop : "payload_capacity" ":" NUMBER
+build_cost_prop : "build_cost" ":" NUMBER
 
 node_decl : "node" IDENTIFIER "{" node_prop+ "}"
 node_prop : loc_prop | allows_prop | schedule_prop
 loc_prop : "loc" ":" coordinate
 allows_prop : "allows" ":" list
-schedule_prop : "schedule_windows" ":" list
+schedule_prop : "schedule_windows" ":" "[" schedule_window ("," schedule_window)* "]"
+schedule_window : TIME "-" TIME
 
 geofence_decl : "geofence" IDENTIFIER "{" geofence_prop+ "}"
-geofence_prop : bounds_prop | blocks_prop
+geofence_prop : bounds_prop | blocks_prop | activate_at_prop | rules_block
 bounds_prop : "bounds" ":" coord_list
 blocks_prop : "blocks" ":" list
+activate_at_prop : "activate_at" ":" TIME
+
+rules_block : "rules" ":" "{" rule_stmt+ "}"
+rule_stmt : block_rule | allow_only_rule | modifier_stmt
+block_rule : "block" ":" list
+allow_only_rule : "allow_only" ":" list
+modifier_stmt : MODIFIER_TYPE ":" "{" modifier_val* "}"
+modifier_val : IDENTIFIER ":" NUMBER
+MODIFIER_TYPE : "reduce_speed" | "increase_speed" | "reduce_cost" | "increase_cost"
+
+hub_decl : "hub" IDENTIFIER "{" connects_prop "}"
+connects_prop : "connects" ":" list
+
+route_decl : "route" IDENTIFIER "{" route_prop+ "}"
+route_prop : route_mode_prop | stops_prop
+route_mode_prop : "mode" ":" IDENTIFIER
+stops_prop : "stops" ":" list
 
 reactive_mission : "mission" IDENTIFIER "{" mission_prop+ monitor_block* "}"
 
@@ -30,10 +57,14 @@ mission_prop : from_prop
              | start_time_prop
              | optimize_prop
              | limit_prop
+             | alpha_prop
+             | improvement_prop
 
 from_prop : "from" ":" IDENTIFIER
 to_prop : "to" ":" IDENTIFIER
 start_time_prop : "start_time" ":" TIME
+alpha_prop : "alpha" ":" NUMBER
+improvement_prop : "improvement" ":" NUMBER
 
 optimize_prop : "optimize" ":" IDENTIFIER
 limit_prop : "limit" IDENTIFIER ":" NUMBER
@@ -49,24 +80,82 @@ render_prop : execution_prop
             | nodes_prop
             | export_prop
 
-execution_prop : "execution" ":" ("static" | "dynamic")
+execution_prop : "execution" ":" EXEC_MODE
+EXEC_MODE : "static" | "dynamic"
 timeline_prop : "timeline" ":" BOOLEAN
 sim_speed_prop : "sim_speed" ":" NUMBER "x"
 nodes_prop : "show_nodes" ":" BOOLEAN
 export_prop : "export_html" ":" STRING
 
-TIME : /([01][0-9]|2[0-3]):[0-5][0-9]/
+// ─── Imperative Program Block ────────────────────────────────────────────────
+
+program_block : "program" "{" program_stmt* "}"
+
+program_stmt : let_stmt
+             | assign_stmt
+             | print_stmt
+             | if_stmt
+             | for_stmt
+             | while_stmt
+             | expr_stmt
+
+let_stmt    : "let" IDENTIFIER "=" expr
+assign_stmt : IDENTIFIER "=" expr
+print_stmt  : "print" "(" print_args ")"
+print_args  : (expr ("," expr)*)?
+if_stmt     : "if" expr if_then_body ("else" if_else_body)?
+if_then_body : "{" program_stmt* "}"
+if_else_body : "{" program_stmt* "}"
+for_stmt    : "for" IDENTIFIER "in" expr for_body
+for_body    : "{" program_stmt* "}"
+while_stmt  : "while" expr while_body
+while_body  : "{" program_stmt* "}"
+expr_stmt   : call_expr
+
+// ─── Expressions ─────────────────────────────────────────────────────────────
+
+expr : or_expr
+or_expr  : and_expr ("or" and_expr)*
+and_expr : not_expr ("and" not_expr)*
+not_expr : "not" not_expr -> not_op
+         | cmp_expr
+cmp_expr : add_expr (CMP_OP add_expr)?
+CMP_OP   : "==" | "!=" | "<" | ">" | "<=" | ">="
+add_expr : mul_expr (ADD_OP mul_expr)*
+ADD_OP   : "+" | "-"
+mul_expr : unary_expr (MUL_OP unary_expr)*
+MUL_OP   : "*" | "/"
+unary_expr : "-" unary_expr -> neg_op
+           | postfix_expr
+postfix_expr : atom ("." IDENTIFIER)*
+atom : NUMBER          -> num_lit
+     | STRING          -> str_lit
+     | BOOLEAN         -> bool_lit
+     | "null"          -> null_lit
+     | "(" NUMBER "," NUMBER ")"           -> tuple_lit
+     | "[" (expr ("," expr)*)? "]"        -> list_lit
+     | call_expr
+     | IDENTIFIER      -> var_ref
+
+call_expr : IDENTIFIER "(" call_args ")"
+call_args : (named_arg ("," named_arg)*)?
+named_arg : IDENTIFIER ":" expr
+
+// ─── Shared terminals ────────────────────────────────────────────────────────
+
+coordinate  : "(" NUMBER "," NUMBER ")"
+coord_list  : "[" coordinate ("," coordinate)* "]"
+list        : "[" IDENTIFIER ("," IDENTIFIER)* "]"
+
+TIME      : /([01][0-9]|2[0-3]):[0-5][0-9]/
 CONDITION : /[a-zA-Z][a-zA-Z0-9_]*(<|>|==)-?[0-9]+|late_for\s+[a-zA-Z][a-zA-Z0-9_]*/
-ACTION : "reroute" | "wait" | "return_to_base"
-
-coordinate : "(" NUMBER "," NUMBER ")"
-coord_list : "[" coordinate ("," coordinate)* "]"
-list : "[" IDENTIFIER ("," IDENTIFIER)* "]"
-
-BOOLEAN : "true" | "false"
+ACTION    : "reroute" | "wait" | "return_to_base"
+BOOLEAN   : "true" | "false"
 IDENTIFIER : /[a-zA-Z][a-zA-Z0-9_]*/
-NUMBER : /-?[0-9]+(\.[0-9]+)?/
-STRING : /"[^"]*"/
+NUMBER     : /-?[0-9]+(\.[0-9]+)?/
+STRING     : /"[^"]*"/
 
 %import common.WS
 %ignore WS
+COMMENT: /\/\/.*/
+%ignore COMMENT
