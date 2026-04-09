@@ -1,0 +1,113 @@
+// TEST 04 — Program Block: for, while, math, comparisons, variables
+// Tests: for_stmt, while_stmt, let, assign, BinOp, CMP_OP, print
+
+mode Van {
+    speed: 70.0
+    cost: 3.0
+    payload_capacity: 300.0
+}
+
+mode Scooter {
+    speed: 40.0
+    cost: 1.0
+    payload_capacity: 10.0
+}
+
+node Base {
+    loc: (37.7749, -122.4194)
+    allows: [Van, Scooter]
+}
+
+node Stop1 {
+    loc: (37.7849, -122.4094)
+    allows: [Van, Scooter]
+}
+
+node Stop2 {
+    loc: (37.7649, -122.4294)
+    allows: [Van, Scooter]
+}
+
+node Stop3 {
+    loc: (37.7949, -122.4394)
+    allows: [Van]
+}
+
+node Stop4 {
+    loc: (37.7549, -122.4094)
+    allows: [Scooter]
+}
+
+node Destination {
+    loc: (37.7649, -122.3994)
+    allows: [Van, Scooter]
+}
+
+program {
+    // ── Basic arithmetic ─────────────────────────────────────────────────
+    let base_cost = 10.0
+    let multiplier = 2.5
+    let total = base_cost * multiplier
+    print("Base cost:", base_cost)
+    print("Multiplier:", multiplier)
+    print("Total:", total)
+
+    // ── For loop over a list ─────────────────────────────────────────────
+    let stops = [Stop1, Stop2, Stop3, Stop4]
+    let count = 0
+    print("--- Iterating stops ---")
+    for stop in stops {
+        count = count + 1
+        print("  Stop", count)
+    }
+    print("Total stops visited:", count)
+
+    // ── While loop with counter ──────────────────────────────────────────
+    let i = 0
+    let sum = 0
+    while i < 5 {
+        i = i + 1
+        sum = sum + i
+    }
+    print("Sum of 1..5 =", sum)
+
+    // ── Conditionals with comparisons ────────────────────────────────────
+    let alpha = 0.8
+    if alpha > 0.5 {
+        print("High alpha: optimising for time")
+    } else {
+        print("Low alpha: optimising for cost")
+    }
+
+    // ── String concatenation via + ────────────────────────────────────────
+    let label = "Route-" + str(value: count)
+    print("Label:", label)
+
+    // ── Nested if ────────────────────────────────────────────────────────
+    let speed = 70.0
+    let cost_per_km = 3.0
+    if speed > 60.0 {
+        if cost_per_km < 5.0 {
+            print("Fast and affordable mode selected")
+        } else {
+            print("Fast but expensive mode")
+        }
+    } else {
+        print("Slower mode selected")
+    }
+
+    // ── find_path and check result fields ────────────────────────────────
+    let result = find_path(
+        from: Base,
+        to: Destination,
+        start_time: "07:00",
+        alpha: 0.8
+    )
+
+    if result.possible {
+        print("Path found! Time:", result.time, "hrs, Cost: $", result.cost)
+        render(output: "test_04_loops_math.html", path: result)
+    } else {
+        print("No path found.")
+    }
+}

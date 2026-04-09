@@ -1,0 +1,80 @@
+// TEST 07 — Infrastructure Optimizer (build_path / improvement target)
+// Tests: build_path(), improvement mission prop, limit budget
+
+mode FreightTrain {
+    speed: 120.0
+    cost: 3.0
+    payload_capacity: 10000.0
+    build_cost: 150.0
+}
+
+mode HeavyTruck {
+    speed: 80.0
+    cost: 6.0
+    payload_capacity: 800.0
+    build_cost: 30.0
+}
+
+mode LightVan {
+    speed: 65.0
+    cost: 2.5
+    payload_capacity: 150.0
+}
+
+node FactoryA {
+    loc: (53.4808, -2.2426)
+    allows: [FreightTrain, HeavyTruck, LightVan]
+}
+
+node Junction1 {
+    loc: (53.4700, -2.2000)
+    allows: [HeavyTruck, LightVan]
+}
+
+node Junction2 {
+    loc: (53.4600, -2.1500)
+    allows: [FreightTrain, HeavyTruck]
+}
+
+node PortCity {
+    loc: (53.4000, -2.9970)
+    allows: [FreightTrain, HeavyTruck, LightVan]
+}
+
+geofence GreenbeltProtection {
+    bounds: [(53.44, -2.20), (53.44, -2.10), (53.46, -2.10), (53.46, -2.20)]
+    blocks: [HeavyTruck]
+    activate_at: 00:00
+}
+
+mission SupplyChainOpt {
+    from: FactoryA
+    to: PortCity
+    start_time: 05:00
+    optimize: time
+    alpha: 0.8
+    improvement: 0.2
+    limit budget: 500.0
+}
+
+program {
+    print("=== Infrastructure Build Test ===")
+
+    let result = build_path(
+        from: FactoryA,
+        to: PortCity,
+        start_time: "05:00",
+        alpha: 0.8
+    )
+
+    print("Build possible:", result.possible)
+
+    if result.possible {
+        print("Build cost: $", result.cost)
+        print("Travel time:", result.time, "hrs")
+        render(output: "test_07_infrastructure.html", path: result)
+        print("Infrastructure dashboard rendered.")
+    } else {
+        print("Infrastructure build not feasible within budget.")
+    }
+}

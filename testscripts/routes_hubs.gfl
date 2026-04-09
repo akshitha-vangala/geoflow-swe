@@ -1,0 +1,87 @@
+// TEST 03 — Routes + Hubs + Schedule Windows + Monitor
+// Tests: route_decl, hub_decl, schedule_windows, monitor block, reactive_mission
+
+mode Metro {
+    speed: 35.0
+    cost: 0.8
+}
+
+mode Bus {
+    speed: 25.0
+    cost: 0.4
+}
+
+mode Walking {
+    speed: 5.0
+    cost: 0.0
+}
+
+node CentralStation {
+    loc: (48.8566, 2.3522)
+    allows: [Metro, Bus, Walking]
+}
+
+node NorthTerminal {
+    loc: (48.8848, 2.3470)
+    allows: [Metro, Bus]
+}
+
+node EastMarket {
+    loc: (48.8600, 2.3900)
+    allows: [Bus, Walking]
+    schedule_windows: [06:00-22:00]
+}
+
+node WestResidential {
+    loc: (48.8550, 2.3100)
+    allows: [Bus, Walking]
+    schedule_windows: [07:00-23:00]
+}
+
+node SouthAirport {
+    loc: (48.8200, 2.3600)
+    allows: [Metro, Bus]
+}
+
+// Define a fixed transit route
+route MetroLineA {
+    mode: Metro
+    stops: [CentralStation, NorthTerminal, EastMarket]
+}
+
+route BusRoute12 {
+    mode: Bus
+    stops: [WestResidential, CentralStation, SouthAirport]
+}
+
+// Hub auto-connects nodes
+hub CentralHub {
+    connects: [CentralStation, NorthTerminal, WestResidential]
+}
+
+geofence AirportRestriction {
+    bounds: [(48.81, 2.34), (48.81, 2.38), (48.83, 2.38), (48.83, 2.34)]
+    blocks: [Walking]
+    activate_at: 00:00
+}
+
+// Reactive mission with monitor
+mission AirportTransfer {
+    from: NorthTerminal
+    to: SouthAirport
+    start_time: 06:30
+    optimize: time
+    alpha: 0.6
+    monitor Congestion {
+        trigger: late_for SouthAirport
+        fallback: reroute
+    }
+}
+
+render TransitDashboard {
+    execution: dynamic
+    show_nodes: true
+    timeline: true
+    sim_speed: 3.0x
+    export_html: "test_03_routes_hubs.html"
+}

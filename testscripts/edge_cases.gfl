@@ -1,0 +1,106 @@
+// TEST 08 — Edge Cases
+// Tests: unreachable destination, geofence blocks all modes,
+//        path to same node, not operator, null handling
+
+mode Drone {
+    speed: 60.0
+    cost: 2.0
+    payload_capacity: 2.0
+}
+
+mode Boat {
+    speed: 25.0
+    cost: 1.5
+    payload_capacity: 500.0
+}
+
+node IslandA {
+    loc: (25.7617, -80.1918)
+    allows: [Drone, Boat]
+}
+
+node IslandB {
+    loc: (25.7750, -80.2100)
+    allows: [Drone]
+}
+
+node IslandC {
+    loc: (25.7400, -80.1700)
+    allows: [Boat]
+}
+
+node IsolatedIsland {
+    loc: (25.8000, -80.2500)
+    allows: [Drone]
+}
+
+// Blocks ALL modes — makes IsolatedIsland unreachable through this zone
+geofence TotalAirspace {
+    bounds: [(25.78, -80.26), (25.78, -80.22), (25.82, -80.22), (25.82, -80.26)]
+    blocks: [Drone, Boat]
+    activate_at: 00:00
+}
+
+program {
+    print("=== Edge Case Tests ===")
+
+    // ── Test 1: Normal reachable path ─────────────────────────────────────
+    print("")
+    print("-- Test 1: Reachable path IslandA -> IslandB --")
+    let r1 = find_path(
+        from: IslandA,
+        to: IslandB,
+        start_time: "09:00",
+        alpha: 0.5
+    )
+    print("Possible:", r1.possible)
+    if r1.possible {
+        print("Time:", r1.time, "Cost:", r1.cost)
+    }
+
+    // ── Test 2: Blocked path — geofence blocks all modes ─────────────────
+    print("")
+    print("-- Test 2: Blocked by geofence IslandA -> IsolatedIsland --")
+    let r2 = find_path(
+        from: IslandA,
+        to: IsolatedIsland,
+        start_time: "09:00",
+        alpha: 0.5
+    )
+    print("Possible:", r2.possible)
+    if not r2.possible {
+        print("Correctly identified as unreachable.")
+    }
+
+    // ── Test 3: Mode mismatch — IslandC only allows Boat, IslandB only Drone
+    print("")
+    print("-- Test 3: Mode mismatch IslandB -> IslandC --")
+    let r3 = find_path(
+        from: IslandB,
+        to: IslandC,
+        start_time: "09:00",
+        alpha: 0.5
+    )
+    print("Possible:", r3.possible)
+
+    // ── Test 4: Boolean logic on results ─────────────────────────────────
+    print("")
+    print("-- Test 4: Logic over results --")
+    let any_blocked = not r2.possible or not r3.possible
+    let all_clear = r1.possible and r2.possible and r3.possible
+    print("Any blocked:", any_blocked)
+    print("All clear:", all_clear)
+
+    // ── Test 5: Conditional render only if path found ─────────────────────
+    print("")
+    print("-- Test 5: Conditional render --")
+    if r1.possible and not r2.possible {
+        print("Partial success — rendering what we have")
+        render(output: "test_08_edge_cases.html", path: r1)
+    } else {
+        print("Unexpected result combination")
+    }
+
+    print("")
+    print("=== Edge Cases Complete ===")
+}

@@ -1,0 +1,185 @@
+// TEST 06 — Full Stress Test
+// Tests: generate_network, optimize_hub, build_path, multiple find_path calls,
+//        nested loops, boolean logic (and/or/not), len(), int(), float(), str()
+
+mode AirFreight {
+    speed: 800.0
+    cost: 50.0
+    payload_capacity: 5000.0
+    build_cost: 200.0
+}
+
+mode HighSpeedRail {
+    speed: 250.0
+    cost: 8.0
+    payload_capacity: 2000.0
+    build_cost: 100.0
+}
+
+mode RoadFreight {
+    speed: 90.0
+    cost: 5.0
+    payload_capacity: 1000.0
+    build_cost: 20.0
+}
+
+mode LocalVan {
+    speed: 60.0
+    cost: 2.0
+    payload_capacity: 200.0
+}
+
+node MegaHub {
+    loc: (35.6762, 139.6503)
+    allows: [AirFreight, HighSpeedRail, RoadFreight, LocalVan]
+}
+
+node PortAlpha {
+    loc: (35.6500, 139.7700)
+    allows: [RoadFreight, LocalVan]
+}
+
+node PortBeta {
+    loc: (35.7100, 139.7300)
+    allows: [HighSpeedRail, RoadFreight]
+}
+
+node WarehouseX {
+    loc: (35.6900, 139.6900)
+    allows: [RoadFreight, LocalVan]
+}
+
+node WarehouseY {
+    loc: (35.6600, 139.7100)
+    allows: [RoadFreight, LocalVan, HighSpeedRail]
+}
+
+node FinalDest {
+    loc: (35.7200, 139.6200)
+    allows: [AirFreight, HighSpeedRail, RoadFreight, LocalVan]
+}
+
+geofence UrbanCore {
+    bounds: [(35.66, 139.68), (35.66, 139.72), (35.70, 139.72), (35.70, 139.68)]
+    blocks: [AirFreight]
+    activate_at: 07:00
+    rules: {
+        reduce_speed: { RoadFreight: 0.6 }
+        increase_cost: { RoadFreight: 1.8 }
+    }
+}
+
+route FreightExpressLine {
+    mode: HighSpeedRail
+    stops: [MegaHub, WarehouseY, FinalDest]
+}
+
+hub LogisticsHub {
+    connects: [MegaHub, WarehouseX, WarehouseY]
+}
+
+program {
+    print("=== GeoFlow Stress Test ===")
+
+    // ── Test 1: Basic find_path with high alpha (time priority) ───────────
+    print("")
+    print("-- Test 1: Time-priority path --")
+    let r1 = find_path(
+        from: MegaHub,
+        to: FinalDest,
+        start_time: "06:00",
+        alpha: 1.0
+    )
+    print("Possible:", r1.possible, "| Time:", r1.time, "| Cost:", r1.cost)
+
+    // ── Test 2: Cost-priority path ─────────────────────────────────────────
+    print("")
+    print("-- Test 2: Cost-priority path --")
+    let r2 = find_path(
+        from: MegaHub,
+        to: FinalDest,
+        start_time: "06:00",
+        alpha: 0.0
+    )
+    print("Possible:", r2.possible, "| Time:", r2.time, "| Cost:", r2.cost)
+
+    // ── Test 3: Compare results ────────────────────────────────────────────
+    print("")
+    print("-- Test 3: Compare time vs cost paths --")
+    if r1.possible and r2.possible {
+        if r1.time < r2.time {
+            print("Time-priority is faster as expected")
+        } else {
+            print("Unexpected: cost-priority was faster")
+        }
+        if r2.cost < r1.cost {
+            print("Cost-priority is cheaper as expected")
+        } else {
+            print("Unexpected: time-priority was cheaper")
+        }
+    } else {
+        print("One or both paths not found — skipping comparison")
+    }
+
+    // ── Test 4: Boolean logic ──────────────────────────────────────────────
+    print("")
+    print("-- Test 4: Boolean logic --")
+    let both_found = r1.possible and r2.possible
+    let neither_found = not r1.possible and not r2.possible
+    let at_least_one = r1.possible or r2.possible
+    print("Both found:", both_found)
+    print("Neither found:", neither_found)
+    print("At least one:", at_least_one)
+
+    // ── Test 5: Type conversions ───────────────────────────────────────────
+    print("")
+    print("-- Test 5: Type conversions --")
+    let t_int = int(value: r1.time)
+    let t_float = float(value: t_int)
+    let t_str = str(value: t_float)
+    print("time as int:", t_int)
+    print("back to float:", t_float)
+    print("as string:", t_str)
+
+    // ── Test 6: Loop with math ─────────────────────────────────────────────
+    print("")
+    print("-- Test 6: Alpha sweep simulation --")
+    let alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
+    let best_alpha = 0.0
+    let best_score = 9999.0
+    for a in alphas {
+        let score = a * 10.0 + (1.0 - a) * 5.0
+        print("  alpha:", a, "score:", score)
+        if score < best_score {
+            best_score = score
+            best_alpha = a
+        }
+    }
+    print("Best alpha:", best_alpha, "with score:", best_score)
+
+    // ── Test 7: Nested while ───────────────────────────────────────────────
+    print("")
+    print("-- Test 7: Nested while countdown --")
+    let outer = 3
+    while outer > 0 {
+        let inner = 2
+        while inner > 0 {
+            print("  outer:", outer, "inner:", inner)
+            inner = inner - 1
+        }
+        outer = outer - 1
+    }
+
+    // ── Test 8: Render the best result ────────────────────────────────────
+    print("")
+    print("-- Test 8: Rendering best path --")
+    if r1.possible {
+        render(output: "test_06_stress_test.html", path: r1)
+        print("Dashboard rendered.")
+    } else {
+        print("No path to render.")
+    }
+
+    print("")
+    print("=== Stress Test Complete ===")
+}

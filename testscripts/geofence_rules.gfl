@@ -1,0 +1,97 @@
+// TEST 05 — Advanced Geofences: rules, allow_only, reduce_speed, increase_cost
+// Tests: rules_block, modifier_stmt, allow_only_rule, multiple geofences
+
+mode ElectricBus {
+    speed: 30.0
+    cost: 1.0
+}
+
+mode DieselTruck {
+    speed: 65.0
+    cost: 4.0
+}
+
+mode Cycle {
+    speed: 15.0
+    cost: 0.0
+}
+
+mode LightRail {
+    speed: 55.0
+    cost: 1.5
+}
+
+node CityDepot {
+    loc: (52.5200, 13.4050)
+    allows: [ElectricBus, DieselTruck, Cycle, LightRail]
+}
+
+node GreenZoneHub {
+    loc: (52.5250, 13.3800)
+    allows: [ElectricBus, Cycle]
+}
+
+node IndustrialPark {
+    loc: (52.5050, 13.4400)
+    allows: [DieselTruck, ElectricBus]
+}
+
+node CentralMarket {
+    loc: (52.5170, 13.3900)
+    allows: [ElectricBus, Cycle, LightRail]
+}
+
+node Suburbs {
+    loc: (52.4900, 13.3700)
+    allows: [ElectricBus, DieselTruck, Cycle, LightRail]
+}
+
+// Green zone — only clean vehicles, slows everything down
+geofence GreenZone {
+    bounds: [(52.52, 13.37), (52.52, 13.41), (52.53, 13.41), (52.53, 13.37)]
+    blocks: [DieselTruck]
+    activate_at: 06:00
+    rules: {
+        allow_only: [ElectricBus, Cycle, LightRail]
+        reduce_speed: { ElectricBus: 0.8 }
+        increase_cost: { LightRail: 1.2 }
+    }
+}
+
+// Night restriction — no heavy vehicles after 22:00
+geofence NightRestriction {
+    bounds: [(52.51, 13.38), (52.51, 13.43), (52.525, 13.43), (52.525, 13.38)]
+    blocks: [DieselTruck]
+    activate_at: 22:00
+}
+
+// Industrial zone — trucks slow down due to road works
+geofence IndustrialSlowZone {
+    bounds: [(52.50, 13.43), (52.50, 13.46), (52.515, 13.46), (52.515, 13.43)]
+    blocks: []
+    activate_at: 07:00
+    rules: {
+        reduce_speed: { DieselTruck: 0.5 }
+        increase_cost: { DieselTruck: 2.0 }
+    }
+}
+
+mission EcoDelivery {
+    from: CityDepot
+    to: Suburbs
+    start_time: 08:00
+    optimize: time
+    alpha: 0.5
+    monitor PollutionAlert {
+        trigger: late_for CentralMarket
+        fallback: reroute
+    }
+}
+
+render EcoDashboard {
+    execution: dynamic
+    show_nodes: true
+    timeline: true
+    sim_speed: 2.0x
+    export_html: "test_05_geofence_rules.html"
+}

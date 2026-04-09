@@ -1,0 +1,49 @@
+// TEST 01 — Basic Delivery Mission
+// Tests: mode_decl, node_decl, geofence_decl, mission, render (v1 legacy auto mode)
+
+mode Bike {
+    speed: 20.0
+    cost: 0.5
+}
+
+mode Car {
+    speed: 60.0
+    cost: 2.0
+}
+
+node Warehouse {
+    loc: (40.7128, -74.0060)
+    allows: [Car, Bike]
+}
+
+node StoreA {
+    loc: (40.7306, -73.9866)
+    allows: [Car, Bike]
+}
+
+node StoreB {
+    loc: (40.7489, -73.9680)
+    allows: [Car]
+}
+
+geofence DowntownZone {
+    bounds: [(40.72, -74.01), (40.72, -73.98), (40.74, -73.98), (40.74, -74.01)]
+    blocks: [Car]
+    activate_at: 08:00
+}
+
+mission CityDelivery {
+    from: Warehouse
+    to: StoreB
+    start_time: 09:00
+    optimize: time
+    alpha: 0.7
+}
+
+render BasicDashboard {
+    execution: dynamic
+    show_nodes: true
+    timeline: true
+    sim_speed: 2.0x
+    export_html: "test_01_basic_delivery.html"
+}

@@ -1,0 +1,259 @@
+// TEST 10 - Kitchen Sink (Every Feature)
+// modes, nodes, geofences (with full rules), routes, hubs,
+// schedule_windows, program block with all statement types,
+// find_path, render, for, while, if/else, not/and/or,
+// int/float/str/len, math, string concat, member access
+
+// -- Modes --------------------------------------------------------------------
+mode HyperLoop {
+    speed: 1000.0
+    cost: 30.0
+    payload_capacity: 300.0
+    build_cost: 500.0
+}
+
+mode ElectricRail {
+    speed: 180.0
+    cost: 6.0
+    payload_capacity: 800.0
+    build_cost: 80.0
+}
+
+mode AutoTruck {
+    speed: 100.0
+    cost: 4.0
+    payload_capacity: 600.0
+    build_cost: 25.0
+}
+
+mode EBike {
+    speed: 25.0
+    cost: 0.2
+    payload_capacity: 10.0
+}
+
+mode Walking {
+    speed: 5.0
+    cost: 0.0
+    payload_capacity: 5.0
+}
+
+// -- Nodes --------------------------------------------------------------------
+node MetroStation {
+    loc: (51.5074, -0.1278)
+    allows: [HyperLoop, ElectricRail, AutoTruck, EBike, Walking]
+}
+
+node TechCampus {
+    loc: (51.5200, -0.0800)
+    allows: [ElectricRail, AutoTruck, EBike]
+    schedule_windows: [07:00-20:00]
+}
+
+node ResearchPark {
+    loc: (51.4900, -0.1100)
+    allows: [AutoTruck, EBike, Walking]
+    schedule_windows: [08:00-18:00]
+}
+
+node LogisticsBase {
+    loc: (51.5300, -0.1500)
+    allows: [HyperLoop, ElectricRail, AutoTruck]
+}
+
+node GreenVillage {
+    loc: (51.4800, -0.1600)
+    allows: [EBike, Walking]
+    schedule_windows: [06:00-22:00]
+}
+
+node DataCenter {
+    loc: (51.5150, -0.0600)
+    allows: [ElectricRail, AutoTruck]
+}
+
+node FinalHub {
+    loc: (51.5400, -0.0900)
+    allows: [HyperLoop, ElectricRail, AutoTruck, EBike]
+}
+
+// -- Routes -------------------------------------------------------------------
+route HyperCorr {
+    mode: HyperLoop
+    stops: [MetroStation, LogisticsBase, FinalHub]
+}
+
+route RailCircle {
+    mode: ElectricRail
+    stops: [MetroStation, TechCampus, DataCenter, FinalHub]
+}
+
+// -- Hubs ---------------------------------------------------------------------
+hub CentralNexus {
+    connects: [MetroStation, TechCampus, LogisticsBase]
+}
+
+hub SouthNexus {
+    connects: [ResearchPark, GreenVillage, MetroStation]
+}
+
+// -- Geofences ----------------------------------------------------------------
+geofence EcoDistrict {
+    bounds: [(51.47, -0.17), (51.47, -0.10), (51.50, -0.10), (51.50, -0.17)]
+    blocks: [HyperLoop, AutoTruck]
+    activate_at: 06:00
+    rules: {
+        allow_only: [EBike, Walking, ElectricRail]
+        reduce_speed: { ElectricRail: 0.85 }
+    }
+}
+
+geofence PeakTraffic {
+    bounds: [(51.50, -0.14), (51.50, -0.08), (51.54, -0.08), (51.54, -0.14)]
+    blocks: []
+    activate_at: 08:00
+    rules: {
+        reduce_speed: { AutoTruck: 0.5, ElectricRail: 0.75 }
+        increase_cost: { AutoTruck: 2.0, EBike: 1.1 }
+    }
+}
+
+geofence SecureZone {
+    bounds: [(51.51, -0.07), (51.51, -0.04), (51.53, -0.04), (51.53, -0.07)]
+    blocks: [EBike, Walking]
+    activate_at: 00:00
+    rules: {
+        allow_only: [HyperLoop, ElectricRail, AutoTruck]
+        increase_cost: { AutoTruck: 1.5 }
+    }
+}
+
+// -- Program Block -------------------------------------------------------------
+program {
+    print("+==================================+")
+    print("|   GeoFlow Kitchen Sink Test      |")
+    print("+==================================+")
+
+    // -- 1. Variable types and math ----------------------------------------
+    print("")
+    print("[ 1 ] Variables and arithmetic")
+    let speed_limit = 100.0
+    let penalty = 0.3
+    let effective = speed_limit * (1.0 - penalty)
+    let label = "Effective speed: " + str(value: effective) + " km/h"
+    print(label)
+
+    // -- 2. For loop with index counter ------------------------------------
+    print("")
+    print("[ 2 ] For loop")
+    let nodes = [MetroStation, TechCampus, ResearchPark, GreenVillage, DataCenter]
+    let idx = 0
+    for n in nodes {
+        idx = idx + 1
+        print("  Node", idx)
+    }
+    print("Total nodes listed:", idx)
+
+    // -- 3. While with break condition -------------------------------------
+    print("")
+    print("[ 3 ] While loop")
+    let budget = 50.0
+    let spent = 0.0
+    let trips = 0
+    while spent < budget {
+        spent = spent + 8.5
+        trips = trips + 1
+        if spent >= budget {
+            print("  Budget exceeded at trip", trips)
+        }
+    }
+    print("Trips taken:", trips, "| Total spent:", spent)
+
+    // -- 4. Nested if/else with boolean ops -------------------------------
+    print("")
+    print("[ 4 ] Boolean logic")
+    let is_peak = true
+    let has_cargo = true
+    let use_eco = false
+    if is_peak and has_cargo and not use_eco {
+        print("  Peak + cargo, non-eco: use AutoTruck")
+    } else {
+        if use_eco or not has_cargo {
+            print("  Eco or no cargo: use EBike")
+        } else {
+            print("  Off-peak with cargo: use ElectricRail")
+        }
+    }
+
+    // -- 5. Type conversions -----------------------------------------------
+    print("")
+    print("[ 5 ] Type conversions")
+    let raw = 3.99
+    let as_int = int(value: raw)
+    let as_str = str(value: as_int)
+    let back   = float(value: as_str)
+    print("  float->int->str->float:", raw, "->", as_int, "->", as_str, "->", back)
+
+    // -- 6. find_path across multiple alpha values -------------------------
+    print("")
+    print("[ 6 ] Alpha sweep: MetroStation -> FinalHub")
+    let alphas = [0.0, 0.5, 1.0]
+    let cheapest_cost = 99999.0
+    let fastest_time  = 99999.0
+    for a in alphas {
+        let res = find_path(
+            from: MetroStation,
+            to: FinalHub,
+            start_time: "08:00",
+            alpha: a
+        )
+        if res.possible {
+            print("  alpha:", a, "-> time:", res.time, "cost:", res.cost)
+            if res.cost < cheapest_cost {
+                cheapest_cost = res.cost
+            }
+            if res.time < fastest_time {
+                fastest_time = res.time
+            }
+        } else {
+            print("  alpha:", a, "-> NO PATH")
+        }
+    }
+    print("  Best cost seen:", cheapest_cost)
+    print("  Best time seen:", fastest_time)
+
+    // -- 7. Eco route test (restricted nodes only) -------------------------
+    print("")
+    print("[ 7 ] Eco route: MetroStation -> GreenVillage")
+    let eco = find_path(
+        from: MetroStation,
+        to: GreenVillage,
+        start_time: "09:00",
+        alpha: 0.3
+    )
+    print("  Possible:", eco.possible)
+    if eco.possible {
+        print("  Time:", eco.time, "Cost:", eco.cost)
+    }
+
+    // -- 8. Render final dashboard -----------------------------------------
+    print("")
+    print("[ 8 ] Rendering dashboard")
+    let main_result = find_path(
+        from: MetroStation,
+        to: FinalHub,
+        start_time: "08:00",
+        alpha: 0.7
+    )
+    if main_result.possible {
+        render(output: "test_10_kitchen_sink.html", path: main_result)
+        print("  Dashboard written: test_10_kitchen_sink.html")
+    } else {
+        print("  No renderable path found.")
+    }
+
+    print("")
+    print("+==================================+")
+    print("|   All tests complete             |")
+    print("+==================================+")
+}

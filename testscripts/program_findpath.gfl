@@ -1,0 +1,67 @@
+// TEST 02 — Program Block: find_path + render
+// Tests: program{}, let, find_path(), print(), if/else, render()
+
+mode Truck {
+    speed: 80.0
+    cost: 5.0
+    payload_capacity: 1000.0
+}
+
+mode Motorbike {
+    speed: 50.0
+    cost: 1.5
+    payload_capacity: 20.0
+}
+
+node DepotNorth {
+    loc: (51.5074, -0.1278)
+    allows: [Truck, Motorbike]
+}
+
+node HubCentral {
+    loc: (51.5155, -0.0922)
+    allows: [Truck, Motorbike]
+}
+
+node ClientSouth {
+    loc: (51.4950, -0.1437)
+    allows: [Motorbike]
+}
+
+node ClientEast {
+    loc: (51.5100, -0.0500)
+    allows: [Truck, Motorbike]
+}
+
+geofence CongestionCharge {
+    bounds: [(51.50, -0.12), (51.50, -0.08), (51.52, -0.08), (51.52, -0.12)]
+    blocks: [Truck]
+    activate_at: 07:00
+    rules: {
+        increase_cost: { Motorbike: 1.5 }
+    }
+}
+
+program {
+    // Find a path prioritising time
+    let result = find_path(
+        from: DepotNorth,
+        to: ClientSouth,
+        start_time: "08:00",
+        alpha: 0.9
+    )
+
+    print("Path possible:", result.possible)
+    print("Travel time:", result.time, "hrs")
+    print("Travel cost: $", result.cost)
+
+    if result.possible {
+        print("Route found — rendering dashboard...")
+        render(
+            output: "test_02_program_findpath.html",
+            path: result
+        )
+    } else {
+        print("No route found between DepotNorth and ClientSouth.")
+    }
+}

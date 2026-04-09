@@ -1,0 +1,117 @@
+// TEST 09 — Multi-Mission Comparison
+// Tests: multiple find_path calls with different start_times,
+//        comparing results, picking best, for loop over result list
+
+mode ExpressTrain {
+    speed: 200.0
+    cost: 12.0
+    payload_capacity: 500.0
+}
+
+mode Coach {
+    speed: 90.0
+    cost: 3.0
+    payload_capacity: 50.0
+}
+
+mode Taxi {
+    speed: 70.0
+    cost: 8.0
+    payload_capacity: 4.0
+}
+
+node CityCenter {
+    loc: (48.2082, 16.3738)
+    allows: [ExpressTrain, Coach, Taxi]
+}
+
+node Airport {
+    loc: (48.1103, 16.5697)
+    allows: [ExpressTrain, Coach, Taxi]
+}
+
+node SuburbNorth {
+    loc: (48.2500, 16.3500)
+    allows: [Coach, Taxi]
+}
+
+node SuburbSouth {
+    loc: (48.1700, 16.3600)
+    allows: [Coach, Taxi]
+}
+
+route AirportExpress {
+    mode: ExpressTrain
+    stops: [CityCenter, Airport]
+}
+
+route CoachRoute {
+    mode: Coach
+    stops: [SuburbNorth, CityCenter, SuburbSouth, Airport]
+}
+
+geofence PeakHourZone {
+    bounds: [(48.19, 16.36), (48.19, 16.42), (48.22, 16.42), (48.22, 16.36)]
+    blocks: [AutoTruck]
+    activate_at: 07:30
+    rules: {
+        reduce_speed: { Coach: 0.5, Taxi: 0.4 }
+        increase_cost: { Taxi: 2.5, Coach: 1.4 }
+    }
+}
+
+program {
+    print("=== Multi-Mission Time Comparison ===")
+
+    // Test 3 different departure times
+    let times = ["06:00", "08:00", "11:00"]
+    let best_time = 999.0
+    let best_departure = "none"
+
+    for t in times {
+        let r = find_path(
+            from: CityCenter,
+            to: Airport,
+            start_time: t,
+            alpha: 0.9
+        )
+        print("Departure:", t, "| Possible:", r.possible, "| Time:", r.time, "hrs | Cost: $", r.cost)
+
+        if r.possible {
+            if r.time < best_time {
+                best_time = r.time
+                best_departure = t
+            }
+        }
+    }
+
+    print("")
+    print("Best departure time:", best_departure, "with travel time:", best_time, "hrs")
+
+    // Now render the best one
+    let final = find_path(
+        from: CityCenter,
+        to: Airport,
+        start_time: best_departure,
+        alpha: 0.9
+    )
+
+    if final.possible {
+        render(output: "test_09_multi_mission.html", path: final)
+        print("Dashboard rendered for best departure.")
+    }
+
+    // Also test cost-optimized for off-peak
+    print("")
+    print("-- Cost-optimized off-peak --")
+    let cheap = find_path(
+        from: SuburbNorth,
+        to: Airport,
+        start_time: "11:00",
+        alpha: 0.1
+    )
+    print("Cheap route possible:", cheap.possible)
+    if cheap.possible {
+        print("Cost: $", cheap.cost, "| Time:", cheap.time, "hrs")
+    }
+}
