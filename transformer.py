@@ -1,5 +1,6 @@
 from lark import Transformer
 
+
 class Mode:
     def __init__(self, name, speed=None, cost=None, payload_capacity=None):
         self.name = name
@@ -8,7 +9,9 @@ class Mode:
         self.payload_capacity = payload_capacity
 
     def __repr__(self):
-        return f"Mode(name={self.name}, speed={self.speed}, cost={self.cost}, payload={self.payload_capacity})"
+        return (
+            f"Mode(name={self.name}, speed={self.speed}, "
+            f"cost={self.cost}, payload={self.payload_capacity})")
 
 
 class Node:
