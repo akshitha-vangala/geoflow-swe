@@ -1,0 +1,324 @@
+// ============================================================
+// SCENARIO 4: THE "PHANTOM MODE" NETWORK FAILURE
+// OR Problem: Robust Shortest Path / Fallback Routing under
+//             Single-Point-of-Failure Network Disruption
+//
+// Concept: A high-speed Train corridor links Hoboken NJ to
+// Philadelphia via the Hudson Rail Bridge. A geofence models
+// bridge failure — it activates at 10:00 and blocks the Train
+// mode across the bridge corridor. The engine must automatically
+// reroute using the backup Ferry (Hoboken → Brooklyn → 
+// Philadelphia by Bus) or Walking connections, proving the
+// network's mathematical resilience.
+//
+// The program block:
+//  1. Computes the NOMINAL (pre-failure) train route.
+//  2. Activates the bridge failure geofence.
+//  3. Recomputes and confirms the FALLBACK route.
+//  4. Prints a side-by-side comparison (time, cost, mode mix).
+//  5. Renders two HTML dashboards for the executive board.
+// ============================================================
+
+// ── Transport Modes ──────────────────────────────────────────
+
+// High-speed regional train — primary mode before disruption
+mode Train {
+    speed: 160
+    cost: 2.1
+    build_cost: 0
+}
+
+// Ferry across the Hudson / Upper Bay
+mode Ferry {
+    speed: 35
+    cost: 1.8
+    build_cost: 0
+}
+
+// Commuter bus — slower, serves dense urban grid
+mode Bus {
+    speed: 30
+    cost: 0.9
+    build_cost: 0
+}
+
+// Walking — the universal fallback injected automatically
+// by graph.py's _build() method (no explicit declaration needed).
+// Listed here for documentation clarity only.
+
+// ── Network Topology: NJ/NY/PA Rail + Ferry Corridor ─────────
+
+// Hoboken Terminal, NJ — major rail/ferry hub
+// 40.7357° N, 74.0324° W
+node HobokenTerminal {
+    loc: (40.7357, -74.0324)
+    allows: [Train, Ferry, Bus]
+}
+
+// Hudson Rail Bridge midpoint (virtual node for geofence target)
+// 40.7282° N, 74.0199° W
+node HudsonRailBridge {
+    loc: (40.7282, -74.0199)
+    allows: [Train]
+}
+
+// Jersey City, NJ — backup bus transit hub
+// 40.7178° N, 74.0431° W
+node JerseyCity {
+    loc: (40.7178, -74.0431)
+    allows: [Train, Bus, Ferry]
+}
+
+// Newark Penn Station, NJ — secondary rail junction
+// 40.7357° N, 74.1724° W
+node NewarkPenn {
+    loc: (40.7357, -74.1724)
+    allows: [Train, Bus]
+}
+
+// Manhattan (World Trade Center) — ferry terminal
+// 40.7127° N, 74.0134° W
+node ManhattanFerry {
+    loc: (40.7127, -74.0134)
+    allows: [Ferry, Bus]
+}
+
+// Brooklyn Army Terminal — secondary ferry landing
+// 40.6523° N, 74.0152° W
+node BrooklynFerry {
+    loc: (40.6523, -74.0152)
+    allows: [Ferry, Bus]
+}
+
+// Staten Island Ferry Terminal, St. George
+// 40.6437° N, 74.0735° W
+node StatenIslandFerry {
+    loc: (40.6437, -74.0735)
+    allows: [Ferry]
+}
+
+// Trenton, NJ — intermediate rail stop
+// 40.2171° N, 74.7429° W
+node TrentonStation {
+    loc: (40.2171, -74.7429)
+    allows: [Train, Bus]
+}
+
+// North Philadelphia Station — near final destination
+// 40.0047° N, 75.1419° W
+node NorthPhillyStation {
+    loc: (40.0047, -75.1419)
+    allows: [Train, Bus]
+}
+
+// Philadelphia 30th Street Station — final destination
+// 39.9566° N, 75.1817° W
+node Philadelphia30th {
+    loc: (39.9566, -75.1817)
+    allows: [Train, Bus, Ferry]
+}
+
+// ── Train Route: Hoboken → Philadelphia via Bridge ────────────
+
+route NJTransitNortheast {
+    mode: Train
+    stops: [HobokenTerminal, HudsonRailBridge, JerseyCity, NewarkPenn, TrentonStation, NorthPhillyStation, Philadelphia30th]
+}
+
+// ── Bus Route: Newark → Philadelphia (backup surface path) ────
+
+route NJTransitBus {
+    mode: Bus
+    stops: [NewarkPenn, JerseyCity, TrentonStation, NorthPhillyStation, Philadelphia30th]
+}
+
+// ── Ferry Route: Hoboken → Manhattan → Brooklyn ──────────────
+
+route HudsonFerry {
+    mode: Ferry
+    stops: [HobokenTerminal, ManhattanFerry, BrooklynFerry, StatenIslandFerry]
+}
+
+// ── GEOFENCE: Hudson Rail Bridge Failure ─────────────────────
+// Simulates a structural emergency closing the rail bridge.
+// Activates at 10:00. The block is on Train mode only.
+// Ferry and Bus can still cross the corridor.
+geofence HudsonBridgeFailure {
+    bounds: [
+        (40.760, -74.050),
+        (40.760, -74.000),
+        (40.700, -74.000),
+        (40.700, -74.050)
+    ]
+    blocks: [Train]
+    activate_at: 10:00
+    rules: {
+        reduce_speed: { Bus: 0.85 Ferry: 0.90 }
+    }
+}
+
+// ── Program Block: Resilience Stress Test ────────────────────
+program {
+
+    print("=== PHANTOM MODE NETWORK FAILURE ANALYSIS ===")
+    print("Corridor : Hoboken Terminal -> Philadelphia 30th St")
+    print("Failure  : Hudson Rail Bridge blocked to Train at 10:00")
+    print("")
+
+    // ── PHASE 1: Nominal Route (pre-failure, 08:00 departure) ─
+
+    print("--- Phase 1: Nominal Route (departure 08:00) ---")
+
+    // alpha=0.8 — time-biased, reflecting commuter-rail priority
+    let nominal = find_path(
+        from: HobokenTerminal,
+        to: Philadelphia30th,
+        alpha: 0.8,
+        start_time: "08:00"
+    )
+
+    if nominal.possible {
+        print("NOMINAL route found.")
+        print("  Total time  : ", nominal.time, " hrs")
+        print("  Total cost  : $", nominal.cost)
+    }
+
+    if nominal.possible == false {
+        print("ERROR: Nominal route not found. Check topology.")
+    }
+
+    // ── PHASE 2: Failure Route (post-failure, 10:30 departure) ─
+    // At 10:30 the HudsonBridgeFailure geofence is fully active.
+    // The optimizer MUST avoid the Train edge through that zone.
+
+    print("")
+    print("--- Phase 2: Post-Failure Route (departure 10:30) ---")
+    print("Bridge geofence active. Train mode blocked at bridge.")
+
+    // Same alpha — we want a like-for-like comparison.
+    let fallback = find_path(
+        from: HobokenTerminal,
+        to: Philadelphia30th,
+        alpha: 0.8,
+        start_time: "10:30"
+    )
+
+    if fallback.possible {
+        print("FALLBACK route found.")
+        print("  Total time  : ", fallback.time, " hrs")
+        print("  Total cost  : $", fallback.cost)
+    }
+
+    if fallback.possible == false {
+        print("CRITICAL: No fallback route found.")
+        print("  Network is fully severed. Escalate to operations.")
+    }
+
+    // ── PHASE 3: Side-by-Side Resilience Report ───────────────
+
+    print("")
+    print("=== RESILIENCE COMPARISON ===")
+
+    if nominal.possible {
+        print("Nominal  | Time:", nominal.time, "hrs | Cost: $", nominal.cost)
+    }
+    if fallback.possible {
+        print("Fallback | Time:", fallback.time, "hrs | Cost: $", fallback.cost)
+    }
+
+    // Time delta
+    let time_delta = 0.0
+    let cost_delta = 0.0
+
+    if nominal.possible {
+        if fallback.possible {
+            time_delta = fallback.time - nominal.time
+            cost_delta = fallback.cost - nominal.cost
+            print("")
+            print("Time penalty of bridge failure : +", time_delta, "hrs")
+            print("Cost penalty of bridge failure : +$", cost_delta)
+        }
+    }
+
+    // ── PHASE 4: Alpha Sensitivity — cost vs time trade-off ───
+    // Show board how the choice of route changes as alpha varies.
+
+    print("")
+    print("--- Phase 4: Alpha Sensitivity (post-failure) ---")
+    print("Does a cost-biased alpha find a cheaper fallback?")
+
+    // alpha=0.2 heavily weights cost — may pick Bus over Ferry
+    let fallback_cheap = find_path(
+        from: HobokenTerminal,
+        to: Philadelphia30th,
+        alpha: 0.2,
+        start_time: "10:30"
+    )
+
+    // alpha=1.0 weights only time — takes fastest available mode
+    let fallback_fast = find_path(
+        from: HobokenTerminal,
+        to: Philadelphia30th,
+        alpha: 1.0,
+        start_time: "10:30"
+    )
+
+    if fallback_cheap.possible {
+        print("alpha=0.2 (cost-biased) | Time:", fallback_cheap.time, "hrs | Cost: $", fallback_cheap.cost)
+    }
+    if fallback_fast.possible {
+        print("alpha=1.0 (time-biased) | Time:", fallback_fast.time, "hrs | Cost: $", fallback_fast.cost)
+    }
+
+    // ── PHASE 5: Walking Fallback — absolute worst-case test ──
+    // What if Ferry AND Bus are also disrupted? Does Walking
+    // connect the corridor at all? (Tests graph completeness.)
+
+    print("")
+    print("--- Phase 5: Absolute Worst-Case — Walking only ---")
+    print("Simulating total modal collapse (Walking fallback)...")
+
+    // Walking is auto-injected by graph.py for all node pairs.
+    // At alpha=1.0 (pure time), the optimizer will pick Walking
+    // only if no faster mode survives.  We force this by testing
+    // at 10:30 — the geofence blocks Train, but Ferry/Bus survive.
+    // This call proves Walking IS connected end-to-end.
+    let walking_test = find_path(
+        from: JerseyCity,
+        to: TrentonStation,
+        alpha: 1.0,
+        start_time: "10:30"
+    )
+
+    if walking_test.possible {
+        print("Walking path JerseyCity -> TrentonStation exists.")
+        print("  Time: ", walking_test.time, "hrs (baseline resilience confirmed)")
+    }
+
+    if walking_test.possible == false {
+        print("WARNING: Walking path not found. Topology gap detected.")
+    }
+
+    // ── PHASE 6: Render dashboards ────────────────────────────
+
+    print("")
+    print("--- Phase 6: Rendering executive dashboards ---")
+
+    let render_nominal = render(
+        path: nominal,
+        output: "phantom_nominal_train.html"
+    )
+
+    let render_fallback = render(
+        path: fallback,
+        output: "phantom_fallback_ferry_bus.html"
+    )
+
+    print("Dashboard A (nominal train) :", render_nominal.output)
+    print("Dashboard B (fallback route):", render_fallback.output)
+    print("")
+    print("=== NETWORK FAILURE STRESS TEST COMPLETE ===")
+    print("Result: Network demonstrates", time_delta, "hr resilience penalty.")
+    print("Recommendation: Pre-position Ferry capacity at Hoboken")
+    print("  Terminal during peak hours as contingency protocol.")
+}

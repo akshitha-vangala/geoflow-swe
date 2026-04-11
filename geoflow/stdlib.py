@@ -586,7 +586,7 @@ def _evaluate_hub_impact(context, target_cities, new_hubs):
             hub_dist += min_dist * 2
 
     savings_pct = ((baseline_dist - hub_dist) / baseline_dist * 100
-                   if baseline_dist > 0 else 0.0)
+                if baseline_dist > 0 else 0.0)
 
     print("\n--- Network Impact Report ---")
     print(f"  Target cities  : {', '.join(target_cities)}")

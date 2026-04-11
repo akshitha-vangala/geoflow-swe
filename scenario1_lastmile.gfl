@@ -1,0 +1,169 @@
+// ============================================================
+// SCENARIO 1 — "Last-Mile" Multi-Modal Congestion Protocol
+// OR Problem: Time-Dependent Shortest Path with Modal Constraints
+// City: Manhattan, NYC → delivery to FiDi (Financial District)
+//
+// Strategy: A dense geofence covers Lower Manhattan, banning
+// Trucks during daylight (08:00). The engine computes when it
+// is mathematically optimal to dispatch a CargoBike (slow, cheap)
+// versus a Drone (fast, expensive) depending on the Alpha slider.
+// The program block iterates over both modes and prints the
+// cost/time tradeoff table so executives can see the break-even.
+// ============================================================
+
+// ── Transport Modes ──────────────────────────────────────────
+
+mode Truck {
+    speed: 35
+    cost: 2.5
+}
+
+mode CargoBike {
+    speed: 18
+    cost: 0.4
+}
+
+mode Drone {
+    speed: 85
+    cost: 4.8
+}
+mode Walking {
+    speed : 5
+    cost : 0
+}
+
+
+// ── Network Nodes (NYC coordinates) ─────────────────────────
+
+node RegionalDC {
+    loc: (40.7505, -74.0020)
+    allows: [Truck, CargoBike, Drone]
+}
+
+node HobokenHub {
+    loc: (40.7440, -74.0324)
+    allows: [Truck, CargoBike, Drone]
+}
+
+node BatteryParkRelay {
+    loc: (40.7033, -74.0170)
+    allows: [CargoBike, Drone, Walking]
+}
+
+node TriBeCaStation {
+    loc: (40.7195, -74.0089)
+    allows: [CargoBike, Drone, Walking]
+}
+
+node FiDiDrop {
+    loc: (40.7074, -74.0113)
+    allows: [CargoBike, Drone, Walking]
+}
+
+node BrooklynDepot {
+    loc: (40.6782, -73.9442)
+    allows: [Truck, CargoBike, Drone]
+}
+
+// ── Lower Manhattan Daytime Truck-Ban Geofence ───────────────
+// Activates at 08:00 — blocks Trucks, slows CargoBikes 20%,
+// raises Drone cost 1.5× due to airspace congestion fees.
+
+geofence LowerManhattanZone {
+    bounds: [
+        (40.7100, -74.0200),
+        (40.7100, -74.0000),
+        (40.7000, -74.0000),
+        (40.7000, -74.0200)
+    ]
+    blocks: [Truck]
+    activate_at: 08:00
+    rules: {
+        reduce_speed: { CargoBike: 0.8 }
+        increase_cost: { Drone: 1.5 }
+    }
+}
+
+// ── Delivery Route (CargoBike-friendly relay chain) ──────────
+
+route BikeRelayRoute {
+    mode: CargoBike
+    stops: [RegionalDC, TriBeCaStation, BatteryParkRelay, FiDiDrop]
+}
+
+route DroneDirectRoute {
+    mode: Drone
+    stops: [RegionalDC, FiDiDrop]
+}
+
+// ── Program Block: Modal Break-Even Analysis ─────────────────
+
+program {
+    print("=== SCENARIO 1: Last-Mile Congestion Protocol ===")
+    print("Network: Lower Manhattan, NYC")
+    print("Truck ban activates at 08:00 inside LowerManhattanZone")
+    print("")
+
+    // ── Test 1: Time-optimal dispatch (alpha = 1.0, prioritise speed)
+    print("--- Alpha = 1.0 (Pure Time Optimisation) ---")
+    let time_result = find_path(
+        from: RegionalDC,
+        to:   FiDiDrop,
+        alpha: 1.0,
+        start_time: "08:30"
+    )
+    if time_result.possible {
+        print("Fastest route time   :", time_result.time, "hrs")
+        print("Fastest route cost   : $", time_result.cost)
+    }
+
+    // ── Test 2: Cost-optimal dispatch (alpha = 0.0, prioritise savings)
+    print("")
+    print("--- Alpha = 0.0 (Pure Cost Optimisation) ---")
+    let cost_result = find_path(
+        from: RegionalDC,
+        to:   FiDiDrop,
+        alpha: 0.0,
+        start_time: "08:30"
+    )
+    if cost_result.possible {
+        print("Cheapest route time  :", cost_result.time, "hrs")
+        print("Cheapest route cost  : $", cost_result.cost)
+    }
+
+    // ── Test 3: Balanced dispatch (alpha = 0.5)
+    print("")
+    print("--- Alpha = 0.5 (Balanced Trade-off) ---")
+    let bal_result = find_path(
+        from: RegionalDC,
+        to:   FiDiDrop,
+        alpha: 0.5,
+        start_time: "08:30"
+    )
+    if bal_result.possible {
+        print("Balanced route time  :", bal_result.time, "hrs")
+        print("Balanced route cost  : $", bal_result.cost)
+    }
+
+    // ── Pre-ban baseline: what if we dispatched at 07:30 with a Truck?
+    print("")
+    print("--- Pre-ban baseline: Truck dispatch at 07:30 ---")
+    let truck_result = find_path(
+        from: RegionalDC,
+        to:   FiDiDrop,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+    if truck_result.possible {
+        print("Truck baseline time  :", truck_result.time, "hrs")
+        print("Truck baseline cost  : $", truck_result.cost)
+    }
+
+    print("")
+    print("Rendering interactive dashboard...")
+    let r1 = render(
+        path:   time_result,
+        output: "scenario1_lastmile.html"
+    )
+    print("Dashboard written to outputs/scenario1_lastmile.html")
+}

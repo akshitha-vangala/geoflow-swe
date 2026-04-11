@@ -1,0 +1,300 @@
+// ============================================================
+// SCENARIO 2: INFRASTRUCTURE CAPEX EXPANSION
+// OR Problem: Capacitated Facility Location (CFL)
+// A logistics firm has a $10M budget to site a new regional
+// distribution center (DC) serving five Mid-Atlantic cities.
+// We use K-Means (suggest_nodes) to find the demand centroid,
+// then optimize_hub to score the candidate site against the
+// weighted time/cost objective, and build_path to quantify
+// the ROI vs. the pre-investment baseline.
+// ============================================================
+
+// ── Transport Modes ──────────────────────────────────────────
+
+mode Truck {
+    speed: 90
+    cost: 3.5
+    build_cost: 0
+}
+
+// LTL Rail — the mode we will BUILD new infrastructure for.
+// build_cost ($M per km) feeds the infrastructure optimizer.
+mode Rail {
+    speed: 140
+    cost: 1.2
+    build_cost: 850
+}
+
+// Last-mile delivery van (urban distribution from the new DC)
+mode Van {
+    speed: 55
+    cost: 2.8
+    build_cost: 0
+}
+
+// ── Demand Cities (the five nodes the DC must serve) ─────────
+
+// Philadelphia, PA — 39.9526° N, 75.1652° W
+node Philadelphia {
+    loc: (39.9526, -75.1652)
+    allows: [Truck, Van, Rail]
+}
+
+// Baltimore, MD — 39.2904° N, 76.6122° W
+node Baltimore {
+    loc: (39.2904, -76.6122)
+    allows: [Truck, Van, Rail]
+}
+
+// Washington, DC — 38.9072° N, 77.0369° W
+node WashingtonDC {
+    loc: (38.9072, -77.0369)
+    allows: [Truck, Van, Rail]
+}
+
+// Wilmington, DE — 39.7447° N, -75.5484° W
+node Wilmington {
+    loc: (39.7447, -75.5484)
+    allows: [Truck, Van]
+}
+
+// Trenton, NJ — 40.2171° N, 74.7429° W
+node Trenton {
+    loc: (40.2171, -74.7429)
+    allows: [Truck, Van]
+}
+
+// ── Existing Gateway Warehouse (origin of all shipments) ─────
+
+// Newark, NJ — existing hub / port of entry
+node Newark {
+    loc: (40.7357, -74.1724)
+    allows: [Truck, Van, Rail]
+}
+
+// ── Geofence: Mid-Atlantic Urban Congestion Zone ─────────────
+// Activates at 07:00 — representing morning rush hour.
+// Trucks slow to 60% speed; cost rises 1.4× inside the zone.
+geofence UrbanCongestionZone {
+    bounds: [
+        (40.1, -77.2),
+        (40.1, -74.5),
+        (38.7, -74.5),
+        (38.7, -77.2)
+    ]
+    activate_at: 07:00
+    rules: {
+        reduce_speed: { Truck: 0.60 Van: 0.55 }
+        increase_cost: { Truck: 1.40 Van: 1.35 }
+    }
+}
+
+// ── Program Block: CapEx Decision Engine ─────────────────────
+program {
+
+    // ── PHASE 1: Baseline — current cost WITHOUT the new DC ──
+
+    print("=== CAPEX DECISION ENGINE ===")
+    print("Phase 1: Computing pre-investment baseline routes...")
+
+    // Route Newark → WashingtonDC during morning congestion.
+    // alpha=0.5 means we weight time and cost equally (standard ops).
+    let baseline_philly = find_path(
+        from: Newark,
+        to: Philadelphia,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    let baseline_dc = find_path(
+        from: Newark,
+        to: WashingtonDC,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    let baseline_balt = find_path(
+        from: Newark,
+        to: Baltimore,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    print("--- Baseline Daily Route Costs (pre-investment) ---")
+
+    if baseline_philly.possible {
+        print("Newark -> Philadelphia | Time:", baseline_philly.time, "hrs | Cost: $", baseline_philly.cost)
+    }
+    if baseline_dc.possible {
+        print("Newark -> WashingtonDC  | Time:", baseline_dc.time, "hrs | Cost: $", baseline_dc.cost)
+    }
+    if baseline_balt.possible {
+        print("Newark -> Baltimore     | Time:", baseline_balt.time, "hrs | Cost: $", baseline_balt.cost)
+    }
+
+    // Aggregate baseline daily cost (3 lanes, 2 round-trips each)
+    let daily_trips = 6.0
+    let baseline_total = 0.0
+
+    if baseline_philly.possible {
+        baseline_total = baseline_total + baseline_philly.cost
+    }
+    if baseline_dc.possible {
+        baseline_total = baseline_total + baseline_dc.cost
+    }
+    if baseline_balt.possible {
+        baseline_total = baseline_total + baseline_balt.cost
+    }
+
+    baseline_total = baseline_total * daily_trips
+    print("Aggregated daily baseline operating cost: $", baseline_total)
+
+    // ── PHASE 2: K-Means Site Selection ──────────────────────
+
+    print("")
+    print("Phase 2: Running K-Means to find optimal DC centroid...")
+
+    // suggest_nodes clusters the 5 demand cities and returns
+    // the geographic centroid as a new node in the graph.
+    let kmeans_result = suggest_nodes(
+        connect_to: [Philadelphia, Baltimore, WashingtonDC, Wilmington, Trenton],
+        count: 1,
+        prefix: "CandidateDC"
+    )
+
+    if kmeans_result.possible {
+        print("K-Means centroid node created:", kmeans_result.nodes)
+        print("Hub count:", kmeans_result.count)
+    }
+
+    // ── PHASE 3: Hub Scoring with optimize_hub ────────────────
+
+    print("")
+    print("Phase 3: Scoring candidate DC via optimize_hub grid search...")
+
+    // optimize_hub performs a 25×25 grid search over the bounding
+    // box of the 5 cities, minimising alpha*norm_time + (1-alpha)*norm_cost.
+    // Budget cap = $10,000,000.
+    // alpha=0.4 reflects an ops preference: cost-saving matters more
+    // than pure speed at the DC placement stage.
+    let hub_result = optimize_hub(
+        cities: [Philadelphia, Baltimore, WashingtonDC, Wilmington, Trenton],
+        budget: 10000000,
+        mode: Rail,
+        name: "NewRegionalDC",
+        alpha: 0.4
+    )
+
+    if hub_result.possible {
+        print("=== HUB SITING RESULT ===")
+        print("Optimal DC name     :", hub_result.name)
+        print("Coordinates (lat)   :", hub_result.lat)
+        print("Coordinates (lon)   :", hub_result.lon)
+        print("Build cost estimate : $", hub_result.build_cost)
+        print("Weighted travel time:", hub_result.time, "hrs")
+        print("Time saved vs direct:", hub_result.time_saved, "hrs/day")
+    }
+
+    // ── PHASE 4: Post-Investment Routes via build_path ────────
+
+    print("")
+    print("Phase 4: Computing post-investment routes through new DC...")
+
+    // build_path calls the infrastructure optimizer, which
+    // can construct new Rail edges within the budget envelope.
+    let post_philly = build_path(
+        from: NewRegionalDC,
+        to: Philadelphia,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    let post_dc = build_path(
+        from: NewRegionalDC,
+        to: WashingtonDC,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    let post_balt = build_path(
+        from: NewRegionalDC,
+        to: Baltimore,
+        alpha: 0.5,
+        start_time: "07:30"
+    )
+
+    print("--- Post-Investment Daily Route Costs ---")
+
+    let post_total = 0.0
+
+    if post_philly.possible {
+        print("NewDC -> Philadelphia | Time:", post_philly.time, "hrs | Cost: $", post_philly.cost)
+        post_total = post_total + post_philly.cost
+    }
+    if post_dc.possible {
+        print("NewDC -> WashingtonDC  | Time:", post_dc.time, "hrs | Cost: $", post_dc.cost)
+        post_total = post_total + post_dc.cost
+    }
+    if post_balt.possible {
+        print("NewDC -> Baltimore     | Time:", post_balt.time, "hrs | Cost: $", post_balt.cost)
+        post_total = post_total + post_balt.cost
+    }
+
+    post_total = post_total * daily_trips
+    print("Aggregated daily post-investment cost: $", post_total)
+
+    // ── PHASE 5: ROI Decision Gate ────────────────────────────
+
+    print("")
+    print("=== ROI DECISION GATE ===")
+
+    let daily_saving = baseline_total - post_total
+    print("Daily operational saving: $", daily_saving)
+
+    // Annualise (260 operating days per year)
+    let annual_saving = daily_saving * 260.0
+    print("Annual operational saving: $", annual_saving)
+
+    // Payback period (years) = CapEx / Annual Saving
+    let capex = 10000000.0
+    let payback_years = 0.0
+
+    if annual_saving > 0.0 {
+        payback_years = capex / annual_saving
+        print("Estimated payback period:", payback_years, "years")
+    }
+
+    if payback_years > 0.0 {
+        if payback_years < 5.0 {
+            print("VERDICT: INVEST — payback within 5-year planning horizon.")
+        }
+        if payback_years >= 5.0 {
+            print("VERDICT: REVIEW — payback exceeds 5-year planning horizon.")
+        }
+    }
+
+    if annual_saving <= 0.0 {
+        print("VERDICT: REJECT — new DC does not reduce operational costs.")
+    }
+
+    // ── PHASE 6: Render dual dashboards for board presentation ─
+
+    print("")
+    print("Phase 6: Rendering executive dashboards...")
+
+    // Baseline dashboard — shows the congested Newark-centric network
+    let render_baseline = render(
+        path: baseline_dc,
+        output: "capex_baseline_network.html"
+    )
+
+    // Post-investment dashboard — shows the new DC hub and Rail spokes
+    let render_post = render(
+        path: post_dc,
+        output: "capex_optimized_network.html"
+    )
+
+    print("Dashboard 1 (baseline) :", render_baseline.output)
+    print("Dashboard 2 (optimized):", render_post.output)
+    print("=== CAPEX ANALYSIS COMPLETE ===")
+}

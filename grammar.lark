@@ -12,7 +12,7 @@ statement : node_decl
           | route_decl
           | program_block
 
-// ─── Declarative World ──────────────────────────────────────────────────────
+// Declarative World 
 
 mode_decl : "mode" IDENTIFIER "{" mode_prop+ "}"
 mode_prop : speed_prop | cost_prop | payload_prop | build_cost_prop

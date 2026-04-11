@@ -67,11 +67,10 @@
         <div class="slider-row" style="margin-top:10px;">
             <button class="btn" id="play-btn" style="flex:2;">▶ Play</button>
             <select id="speed-sel" style="flex:1;">
-                <option value="0.5">0.5x</option>
-                <option value="1">1x</option>
-                <option value="3" selected>3x</option>
-                <option value="6">6x</option>
-                <option value="12">12x</option>
+                <option value="0.0125">0.5x</option>
+                <option value="0.025" selected>1x</option>
+                <option value="0.05">1.25x</option>
+                <option value="0.1">1.5x</option>
             </select>
         </div>
     </div>
@@ -109,14 +108,8 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script id="geoflow-data" type="application/json">{{GEOFLOW_DATA}}</script>
 <script>
-// ═══════════════════════════════════════════════════════════════
-//  STEP 0 — Parse data
-// ═══════════════════════════════════════════════════════════════
 const DATA = JSON.parse(document.getElementById('geoflow-data').textContent);
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 1 — Pure helper functions (no deps, defined first)
-// ═══════════════════════════════════════════════════════════════
 function parseTime(tStr) {
     if (typeof tStr === 'number') return tStr;
     if (!tStr) return 0;
@@ -138,21 +131,37 @@ function haversine(lat1, lon1, lat2, lon2) {
     return 2*R*Math.asin(Math.sqrt(a));
 }
 
+// FIX: Corrected Point In Polygon Math
 function pointInPolygon(point, vs) {
     let inside = false;
+    let x = point[0], y = point[1]; // x=lat, y=lon
     for (let i=0, j=vs.length-1; i<vs.length; j=i++) {
-        const xi=vs[i][0],yi=vs[i][1],xj=vs[j][0],yj=vs[j][1];
-        if (((yi>point[0])!=(yj>point[0]))&&(point[1]<(xj-xi)*(point[0]-yi)/(yj-yi)+xi)) inside=!inside;
+        const xi=vs[i][0], yi=vs[i][1], xj=vs[j][0], yj=vs[j][1];
+        if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside=!inside;
     }
     return inside;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 2 — Timeline bounds (computed ONCE, never reset to zero)
-// ═══════════════════════════════════════════════════════════════
-const journeyStart = parseTime(DATA.mission.start_time || '08:00');
+// FIX: Line Segment Intersection (Catches lines crossing the geofence)
+function segmentsIntersect(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y) {
+    let det = (p2x - p1x) * (p4y - p3y) - (p4x - p3x) * (p2y - p1y);
+    if (det === 0) return false; 
+    let lambda = ((p4y - p3y) * (p4x - p1x) + (p3x - p4x) * (p4y - p1y)) / det;
+    let gamma = ((p1y - p2y) * (p4x - p1x) + (p2x - p1x) * (p4y - p1y)) / det;
+    return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
+}
 
-// Sum p[2] from DATA.path — but only count genuine numbers > 0
+function lineIntersectsPolygon(p1, p2, poly) {
+    if (pointInPolygon(p1, poly) || pointInPolygon(p2, poly)) return true;
+    for (let i = 0; i < poly.length; i++) {
+        let p3 = poly[i];
+        let p4 = poly[(i + 1) % poly.length];
+        if (segmentsIntersect(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], p4[0], p4[1])) return true;
+    }
+    return false;
+}
+
+const journeyStart = parseTime(DATA.mission.start_time || '08:00');
 let pathTotalHrs = 0;
 if (Array.isArray(DATA.path)) {
     DATA.path.forEach(p => {
@@ -160,23 +169,13 @@ if (Array.isArray(DATA.path)) {
         if (!isNaN(t) && t > 0) pathTotalHrs += t;
     });
 }
+// FIX: journeyEnd is now mutable so it can shrink to fit short routes
+let journeyEnd = (pathTotalHrs > 0) ? journeyStart + pathTotalHrs : journeyStart + 16;
 
-// RULE: timelineEnd must always be strictly greater than journeyStart.
-// If path has no time data we fall back to a fixed 16-hour window.
-const journeyEnd = (pathTotalHrs > 0) ? journeyStart + pathTotalHrs : journeyStart + 16;
-
-console.log(`[GeoFlow] journeyStart=${journeyStart} journeyEnd=${journeyEnd} pathTotalHrs=${pathTotalHrs}`);
-
-// ═══════════════════════════════════════════════════════════════
-//  STEP 3 — Sim state
-// ═══════════════════════════════════════════════════════════════
 let simTime       = journeyStart;
 let isPlaying     = false;
 let lastTimestamp = 0;
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 4 — DOM refs
-// ═══════════════════════════════════════════════════════════════
 const timeDisplay     = document.getElementById('time-display');
 const timeSlider      = document.getElementById('time-slider');
 const playBtn         = document.getElementById('play-btn');
@@ -189,7 +188,6 @@ const legendContainer = document.getElementById('legend');
 const lblStart        = document.getElementById('lbl-start');
 const lblEnd          = document.getElementById('lbl-end');
 
-// Apply slider bounds immediately from constants — no function that could mis-fire
 timeSlider.min   = journeyStart;
 timeSlider.max   = journeyEnd;
 timeSlider.step  = 0.001;
@@ -198,9 +196,6 @@ lblStart.innerText = formatTime(journeyStart);
 lblEnd.innerText   = formatTime(journeyEnd);
 timeDisplay.innerText = formatTime(journeyStart);
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 5 — Leaflet map & layers
-// ═══════════════════════════════════════════════════════════════
 let map;
 const layers = {
     nodes: L.layerGroup(), edges: L.layerGroup(), geofences: L.layerGroup(),
@@ -210,35 +205,30 @@ let graphEdges = {}, routeCycleTimes = {}, routeOffsets = {};
 let activePathBlocks = null;
 let selectedStart = null, selectedEnd = null, nodeMarkers = {};
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 6 — THE ANIMATION LOOP  (source of truth for simTime)
-//  Rule: never dispatch events, never read back from slider.
-// ═══════════════════════════════════════════════════════════════
 function animLoop(timestamp) {
-    if (isPlaying) {
-        if (!lastTimestamp) lastTimestamp = timestamp;
-        let deltaMs = timestamp - lastTimestamp;
-        lastTimestamp = timestamp;
-        if (deltaMs > 100) deltaMs = 16;               // guard tab-switch spike
+    try {
+        if (isPlaying) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            let deltaMs = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            if (deltaMs > 100) deltaMs = 16;               // guard tab-switch spike
 
-        simTime += (deltaMs / 1000) * parseFloat(speedSel.value);
-        if (simTime >= journeyEnd) simTime = journeyStart;  // wrap
+            simTime += (deltaMs / 1000) * parseFloat(speedSel.value);
+            if (simTime >= journeyEnd) simTime = journeyStart;  // wrap
 
-        // Push to UI — direct writes only, NO dispatchEvent
-        timeSlider.value = simTime;
-        timeDisplay.innerText = formatTime(simTime);
-        updateDynamicPositions();
-        checkGeofenceTriggers();
-    } else {
-        lastTimestamp = 0;
+            timeSlider.value = simTime;
+            timeDisplay.innerText = formatTime(simTime);
+            updateDynamicPositions();
+            checkGeofenceTriggers();
+        } else {
+            lastTimestamp = 0;
+        }
+    } catch(e) {
+        console.error("Animation Loop Crash: ", e);
     }
     requestAnimationFrame(animLoop);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 7 — UI wiring
-// ═══════════════════════════════════════════════════════════════
-// Human drags slider → update simTime (animLoop will keep going from there)
 timeSlider.oninput = e => {
     simTime = parseFloat(e.target.value);
     timeDisplay.innerText = formatTime(simTime);
@@ -258,9 +248,6 @@ alphaSlider.oninput = e => {
     recomputePath();
 };
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 8 — Route picker
-// ═══════════════════════════════════════════════════════════════
 function updateRoutePicker() {
     const bs = document.getElementById('badge-start'), be = document.getElementById('badge-end'), hint = document.getElementById('click-hint');
     if (selectedStart) { bs.className='badge start'; bs.innerText=`▶ ${selectedStart}`; } else { bs.className='badge empty'; bs.innerText='▶ Start: —'; }
@@ -297,9 +284,6 @@ function redrawNodeMarkers() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 9 — Graph
-// ═══════════════════════════════════════════════════════════════
 class PriorityQueue {
     constructor(){this.items=[];}
     enqueue(el,pr){let i=0;while(i<this.items.length&&this.items[i].priority<=pr)i++;this.items.splice(i,0,{element:el,priority:pr});}
@@ -341,7 +325,8 @@ function getEdgeMetrics(u,v,mode,abs_time,dist) {
     for (const g_name in DATA.geofences) {
         const g=DATA.geofences[g_name]; if (!g.active) continue;
         if (abs_time>=parseTime(g.activate_at||'00:00')) {
-            if (pointInPolygon([n1.lat,n1.lon],g.bounds)||pointInPolygon([n2.lat,n2.lon],g.bounds)) {
+            // FIX: Check if the road intersects the geofence perimeter
+            if (lineIntersectsPolygon([n1.lat, n1.lon], [n2.lat, n2.lon], g.bounds)) {
                 const r=g.rules||{};
                 if (g.blocks?.includes(mode)||r.block?.includes(mode)) blocked=true;
                 if (r.allow_only&&!r.allow_only.includes(mode)) blocked=true;
@@ -360,9 +345,6 @@ function getWaitTime(route,stop,abs_time) {
     const diff=off-(abs_time%ct); return diff<0?diff+ct:diff;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 10 — Drawing
-// ═══════════════════════════════════════════════════════════════
 function drawStaticElements() {
     layers.edges.clearLayers();
     const drawn=new Set();
@@ -402,9 +384,6 @@ function updateGeofenceStyles() {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 11 — Path loading & recompute
-// ═══════════════════════════════════════════════════════════════
 function loadPythonPath() {
     if (!DATA.path||DATA.path.length<2) return false;
     let blocks=[], tTotal=0, cTotal=0;
@@ -414,13 +393,21 @@ function loadPythonPath() {
         blocks.push({node,mode,t_step:t,c_step:c,wait:0,travel:t});
     }
     activePathBlocks=blocks;
+    
+    // FIX: Adapt Slider to Python path limits
+    const t0 = parseTime(DATA.mission.start_time||'08:00');
+    journeyEnd = t0 + tTotal;
+    if (journeyEnd <= t0) journeyEnd = t0 + 0.1;
+    timeSlider.max = journeyEnd;
+    lblEnd.innerText = formatTime(journeyEnd);
+
     layers.userPath.clearLayers();
     let html=`<strong style="color:var(--primary);">Route Loaded</strong><br>Time: <b>${tTotal.toFixed(2)} hrs</b> | Cost: <b>$${cTotal.toFixed(2)}</b><div style="font-size:12px;margin-top:8px;border-left:2px solid #ccc;padding-left:8px;">`;
     let last=null;
     for (const step of blocks) {
         if (!last){last=step.node;continue;}
         const n1=DATA.nodes[last], n2=DATA.nodes[step.node];
-        if (n1&&n2) L.polyline([[n1.lat,n1.lon],[n2.lat,n2.lon]],{color:DATA.modes[step.mode]?.color||'#555',weight:6,opacity:0.9}).bindTooltip(`${step.mode} · ${step.t_step.toFixed(2)}h · $${step.c_step.toFixed(2)}`).addTo(layers.userPath);
+        if (n1&&n2) L.polyline([[n1.lat,n1.lon],[n2.lat,n2.lon]],{color:DATA.modes[step.mode]?.color||'#555',weight:6,opacity:0.9}).bindTooltip(`${step.mode} · ${step.t_step.toFixed(2)}h ·$${step.c_step.toFixed(2)}`).addTo(layers.userPath);
         html+=`➜ <b>${step.node}</b> <span style="color:#666;">(${step.mode})</span><br>`;
         last=step.node;
     }
@@ -451,6 +438,14 @@ function recomputePath() {
     layers.userPath.clearLayers();
     if (optimal) {
         activePathBlocks=optimal.path;
+        
+        // FIX: Adapt Slider to newly calculated limits
+        journeyEnd = t0 + optimal.timeSoFar;
+        if (journeyEnd <= t0) journeyEnd = t0 + 0.1;
+        timeSlider.max = journeyEnd;
+        lblEnd.innerText = formatTime(journeyEnd);
+        if (simTime > journeyEnd) simTime = t0;
+
         let html=`<strong style="color:var(--success);">Optimal Path Found!</strong><br>Time: <b>${optimal.timeSoFar.toFixed(2)} hrs</b> | Cost: <b>$${optimal.costSoFar.toFixed(2)}</b><div style="font-size:12px;margin-top:8px;border-left:2px solid #ccc;padding-left:8px;">`;
         let last=null;
         for (const step of optimal.path) {
@@ -468,9 +463,6 @@ function recomputePath() {
     updateDynamicPositions();
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 12 — Interpolation & dynamic positions
-// ═══════════════════════════════════════════════════════════════
 function interpolateVehicle(r_name, t) {
     const ct=routeCycleTimes[r_name]; if (!ct) return null;
     const tm=t%ct, r=DATA.routes[r_name], m=DATA.modes[r.mode]; let cur=0;
@@ -518,9 +510,6 @@ function updateDynamicPositions() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 13 — Geofence UI toggles
-// ═══════════════════════════════════════════════════════════════
 function setupGeofenceUI() {
     if (!Object.keys(DATA.geofences).length) { toggleContainer.innerHTML="<span style='font-size:12px;color:#888;'>No geofences.</span>"; return; }
     for (const g_name in DATA.geofences) {
@@ -541,9 +530,6 @@ function setupLegend() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  STEP 14 — init
-// ═══════════════════════════════════════════════════════════════
 function init() {
     const bounds=L.latLngBounds();
     for (const n_id in DATA.nodes) bounds.extend([DATA.nodes[n_id].lat,DATA.nodes[n_id].lon]);

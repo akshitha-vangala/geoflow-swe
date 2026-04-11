@@ -1,0 +1,461 @@
+// ============================================================
+// SCENARIO 3: CASCADING DISASTER RELIEF
+// OR Problem: Time-Dependent Shortest Path under Sequential
+//             Network Degradation (Dynamic Graph Contraction)
+//
+// A wildfire is spreading southward down the I-5 corridor in
+// Northern California. Three geofences activate sequentially
+// at 09:00, 12:00, and 15:00, each closing more road segments
+// by allowing only air assets. A while loop in the program {}
+// block tests 12 fixed dispatch windows (every 30 minutes from
+// 08:00 to 14:00) to find the LATEST window at which a ground
+// Truck can still reach the relief camp before all surface
+// roads are cut off.
+// ============================================================
+
+// ── Transport Modes ──────────────────────────────────────────
+
+mode Truck {
+    speed: 95
+    cost: 4.2
+    build_cost: 0
+}
+
+// Helicopter — only mode allowed inside active fire geofences.
+// High cost reflects emergency charter rates (~$18/km).
+mode Helicopter {
+    speed: 220
+    cost: 18.0
+    build_cost: 0
+}
+
+// Utility All-Terrain Vehicle — slower, used on fire-roads
+mode ATV {
+    speed: 40
+    cost: 2.5
+    build_cost: 0
+}
+
+// ── Network Topology: I-5 Corridor, Northern California ──────
+
+// Staging base: Red Bluff (origin of all relief convoys)
+// Red Bluff, CA — 40.1785° N, 122.2358° W
+node RedBluff {
+    loc: (40.1785, -122.2358)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Corning, CA — 39.9274° N, 122.1791° W
+node Corning {
+    loc: (39.9274, -122.1791)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Willows, CA — 39.5238° N, 122.1936° W
+node Willows {
+    loc: (39.5238, -122.1936)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Williams, CA — 39.1571° N, 122.1514° W
+node Williams {
+    loc: (39.1571, -122.1514)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Woodland, CA — 38.6785° N, 121.7733° W
+node Woodland {
+    loc: (38.6785, -121.7733)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Relief Camp: Sacramento Staging Ground
+// Sacramento, CA — 38.5816° N, 121.4944° W
+node SacramentoRelief {
+    loc: (38.5816, -121.4944)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// Forward mountain supply depot — Chico, CA
+// Chico, CA — 39.7285° N, 121.8375° W
+node Chico {
+    loc: (39.7285, -121.8375)
+    allows: [Truck, Helicopter, ATV]
+}
+
+// ── GEOFENCE 1: Northern Fire Zone ───────────────────────────
+// Activates at 09:00. Cuts Corning corridor.
+// Only Helicopter allowed — all ground vehicles blocked.
+geofence NorthFireZone {
+    bounds: [
+        (40.3, -122.8),
+        (40.3, -121.6),
+        (39.6, -121.6),
+        (39.6, -122.8)
+    ]
+    
+    activate_at: 09:00
+    rules: {
+        allow_only: [Helicopter]
+    }
+}
+
+// ── GEOFENCE 2: Central Fire Zone ────────────────────────────
+// Activates at 12:00. Expands to cut Willows/Williams.
+// ATV still allowed on unpaved forest roads; Truck is cut.
+geofence CentralFireZone {
+    bounds: [
+        (39.7, -122.9),
+        (39.7, -121.5),
+        (39.0, -121.5),
+        (39.0, -122.9)
+    ]
+    
+    activate_at: 12:00
+    rules: {
+        allow_only: [Helicopter, ATV]
+    }
+}
+
+// ── GEOFENCE 3: Southern Fire Zone ───────────────────────────
+// Activates at 15:00. Now covers the entire corridor including
+// the Woodland gateway — only Helicopter can pass.
+geofence SouthFireZone {
+    bounds: [
+        (39.1, -122.5),
+        (39.1, -121.3),
+        (38.4, -121.3),
+        (38.4, -122.5)
+    ]
+    
+    activate_at: 15:00
+    rules: {
+        allow_only: [Helicopter]
+    }
+}
+
+// ── Program Block: Latest-Dispatch Binary Search ──────────────
+program {
+
+    print("=== CASCADE DISASTER RELIEF: DISPATCH WINDOW ANALYSIS ===")
+    print("Origin  : Red Bluff Staging Base")
+    print("Target  : Sacramento Relief Camp")
+    print("")
+    print("Testing 12 dispatch windows to find the LATEST viable")
+    print("ground Truck departure before network becomes impassable.")
+    print("")
+
+    // ── Anchor: Pre-fire baseline (06:00 departure) ──────────
+
+    let pre_fire = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "06:00"
+    )
+
+    if pre_fire.possible {
+        print("PRE-FIRE BASELINE (06:00 departure):")
+        print("  Travel time: ", pre_fire.time, " hrs")
+        print("  Travel cost: $", pre_fire.cost)
+    }
+
+    print("")
+    print("--- Scanning dispatch windows ---")
+
+    // ── While-loop: test dispatch windows 08:00 through 14:00 ─
+    // GeoFlow grammar requires start_time to be a string literal.
+    // We encode 12 fixed test points as a manual unroll —
+    // the interpreter evaluates each find_path call independently
+    // so each one sees the correct geofence activation state.
+
+    let last_viable_window = "NONE"
+    let last_viable_time   = 0.0
+    let last_viable_cost   = 0.0
+    let windows_tested      = 0
+    let still_searching     = 1
+
+    // Window 1: 08:00
+    let r0800 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "08:00"
+    )
+    windows_tested = windows_tested + 1
+    if r0800.possible {
+        print("08:00 | VIABLE   | Time:", r0800.time, "hrs | Cost: $", r0800.cost)
+        last_viable_window = "08:00"
+        last_viable_time   = r0800.time
+        last_viable_cost   = r0800.cost
+    }
+    if r0800.possible == false {
+        print("08:00 | BLOCKED  | No ground route available")
+    }
+
+    // Window 2: 08:30
+    let r0830 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "08:30"
+    )
+    windows_tested = windows_tested + 1
+    if r0830.possible {
+        print("08:30 | VIABLE   | Time:", r0830.time, "hrs | Cost: $", r0830.cost)
+        last_viable_window = "08:30"
+        last_viable_time   = r0830.time
+        last_viable_cost   = r0830.cost
+    }
+    if r0830.possible == false {
+        print("08:30 | BLOCKED  | No ground route available")
+    }
+
+    // Window 3: 09:00 — NorthFireZone activates at this hour
+    let r0900 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "09:00"
+    )
+    windows_tested = windows_tested + 1
+    if r0900.possible {
+        print("09:00 | VIABLE   | Time:", r0900.time, "hrs | Cost: $", r0900.cost)
+        last_viable_window = "09:00"
+        last_viable_time   = r0900.time
+        last_viable_cost   = r0900.cost
+    }
+    if r0900.possible == false {
+        print("09:00 | BLOCKED  | NorthFireZone now active")
+    }
+
+    // Window 4: 09:30
+    let r0930 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "09:30"
+    )
+    windows_tested = windows_tested + 1
+    if r0930.possible {
+        print("09:30 | VIABLE   | Time:", r0930.time, "hrs | Cost: $", r0930.cost)
+        last_viable_window = "09:30"
+        last_viable_time   = r0930.time
+        last_viable_cost   = r0930.cost
+    }
+    if r0930.possible == false {
+        print("09:30 | BLOCKED  | No ground route available")
+    }
+
+    // Window 5: 10:00
+    let r1000 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "10:00"
+    )
+    windows_tested = windows_tested + 1
+    if r1000.possible {
+        print("10:00 | VIABLE   | Time:", r1000.time, "hrs | Cost: $", r1000.cost)
+        last_viable_window = "10:00"
+        last_viable_time   = r1000.time
+        last_viable_cost   = r1000.cost
+    }
+    if r1000.possible == false {
+        print("10:00 | BLOCKED  | No ground route available")
+    }
+
+    // Window 6: 10:30
+    let r1030 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "10:30"
+    )
+    windows_tested = windows_tested + 1
+    if r1030.possible {
+        print("10:30 | VIABLE   | Time:", r1030.time, "hrs | Cost: $", r1030.cost)
+        last_viable_window = "10:30"
+        last_viable_time   = r1030.time
+        last_viable_cost   = r1030.cost
+    }
+    if r1030.possible == false {
+        print("10:30 | BLOCKED  | No ground route available")
+    }
+
+    // Window 7: 11:00
+    let r1100 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "11:00"
+    )
+    windows_tested = windows_tested + 1
+    if r1100.possible {
+        print("11:00 | VIABLE   | Time:", r1100.time, "hrs | Cost: $", r1100.cost)
+        last_viable_window = "11:00"
+        last_viable_time   = r1100.time
+        last_viable_cost   = r1100.cost
+    }
+    if r1100.possible == false {
+        print("11:00 | BLOCKED  | No ground route available")
+    }
+
+    // Window 8: 11:30
+    let r1130 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "11:30"
+    )
+    windows_tested = windows_tested + 1
+    if r1130.possible {
+        print("11:30 | VIABLE   | Time:", r1130.time, "hrs | Cost: $", r1130.cost)
+        last_viable_window = "11:30"
+        last_viable_time   = r1130.time
+        last_viable_cost   = r1130.cost
+    }
+    if r1130.possible == false {
+        print("11:30 | BLOCKED  | No ground route available")
+    }
+
+    // Window 9: 12:00 — CentralFireZone activates; Truck now blocked there
+    let r1200 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "12:00"
+    )
+    windows_tested = windows_tested + 1
+    if r1200.possible {
+        print("12:00 | VIABLE   | Time:", r1200.time, "hrs | Cost: $", r1200.cost)
+        last_viable_window = "12:00"
+        last_viable_time   = r1200.time
+        last_viable_cost   = r1200.cost
+    }
+    if r1200.possible == false {
+        print("12:00 | BLOCKED  | CentralFireZone now active — Truck blocked")
+    }
+
+    // Window 10: 12:30
+    let r1230 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "12:30"
+    )
+    windows_tested = windows_tested + 1
+    if r1230.possible {
+        print("12:30 | VIABLE   | Time:", r1230.time, "hrs | Cost: $", r1230.cost)
+        last_viable_window = "12:30"
+        last_viable_time   = r1230.time
+        last_viable_cost   = r1230.cost
+    }
+    if r1230.possible == false {
+        print("12:30 | BLOCKED  | No ground route available")
+    }
+
+    // Window 11: 13:00
+    let r1300 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "13:00"
+    )
+    windows_tested = windows_tested + 1
+    if r1300.possible {
+        print("13:00 | VIABLE   | Time:", r1300.time, "hrs | Cost: $", r1300.cost)
+        last_viable_window = "13:00"
+        last_viable_time   = r1300.time
+        last_viable_cost   = r1300.cost
+    }
+    if r1300.possible == false {
+        print("13:00 | BLOCKED  | No ground route available")
+    }
+
+    // Window 12: 14:00
+    let r1400 = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "14:00"
+    )
+    windows_tested = windows_tested + 1
+    if r1400.possible {
+        print("14:00 | VIABLE   | Time:", r1400.time, "hrs | Cost: $", r1400.cost)
+        last_viable_window = "14:00"
+        last_viable_time   = r1400.time
+        last_viable_cost   = r1400.cost
+    }
+    if r1400.possible == false {
+        print("14:00 | BLOCKED  | Network impassable to ground vehicles")
+    }
+
+    // ── Summary Report ────────────────────────────────────────
+
+    print("")
+    print("=== DISPATCH WINDOW ANALYSIS COMPLETE ===")
+    print("Windows tested     :", windows_tested)
+    print("Last viable window :", last_viable_window)
+
+    if last_viable_window == "NONE" {
+        print("CRITICAL: No viable ground dispatch window found.")
+        print("Helicopter-only emergency response is required.")
+    }
+
+    if last_viable_window != "NONE" {
+        print("Last viable Truck departure :", last_viable_window)
+        print("Travel time at that window  :", last_viable_time, "hrs")
+        print("Travel cost at that window  : $", last_viable_cost)
+        print("")
+        print("OPERATIONS DIRECTIVE:")
+        print("  All Truck convoys MUST depart Red Bluff by", last_viable_window)
+        print("  Departures after this time require Helicopter assets.")
+    }
+
+    // ── Render: three snapshots showing geofence progression ─
+
+    print("")
+    print("Rendering progressive fire-spread dashboards...")
+
+    // Snapshot at 08:00 — pre-fire, full network available
+    let snap_pre = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "08:00"
+    )
+    let render_pre = render(
+        path: snap_pre,
+        output: "disaster_08h_prefire.html"
+    )
+
+    // Snapshot at 12:00 — central zone active, partial network
+    let snap_mid = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 1.0,
+        start_time: "12:00"
+    )
+    let render_mid = render(
+        path: snap_mid,
+        output: "disaster_12h_midfire.html"
+    )
+
+    // Helicopter-only route (alpha=0.9 to bias toward speed)
+    let snap_helo = find_path(
+        from: RedBluff,
+        to: SacramentoRelief,
+        alpha: 0.9,
+        start_time: "15:30"
+    )
+    let render_helo = render(
+        path: snap_helo,
+        output: "disaster_15h_heloonly.html"
+    )
+
+    print("Dashboard A (pre-fire)  :", render_pre.output)
+    print("Dashboard B (mid-fire)  :", render_mid.output)
+    print("Dashboard C (helo-only) :", render_helo.output)
+    print("=== DISASTER RELIEF ENGINE SHUTDOWN ===")
+}

@@ -17,7 +17,7 @@ def main(input_file: str):
         print(f"Error: {input_file} not found.", file=sys.stderr)
         return
 
-    with open(input_file, 'r') as f:
+    with open(input_file, 'r', encoding='utf-8') as f:
         content = f.read()
 
     print("1. Parsing DSL...")
@@ -37,6 +37,7 @@ def main(input_file: str):
     try:
         SemanticValidator(context).validate()
     except SemanticError:
+        print(f"[GeoFlow Semantic Error] Aborting: {e}", file=sys.stderr)
         return
 
     print("2. Building Graph...")
