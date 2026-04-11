@@ -36,7 +36,7 @@ def main(input_file: str):
     
     try:
         SemanticValidator(context).validate()
-    except SemanticError:
+    except SemanticError as e:
         print(f"[GeoFlow Semantic Error] Aborting: {e}", file=sys.stderr)
         return
 
