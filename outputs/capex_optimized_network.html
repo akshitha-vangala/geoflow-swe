@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GeoFlow Interactive Dashboard</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        :root { --primary: #0d6efd; --success: #198754; --danger: #dc3545; --bg-panel: rgba(255,255,255,0.98); }
+        body { margin:0; padding:0; font-family:system-ui,-apple-system,sans-serif; color:#333; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+        #controls {
+            position:absolute; top:15px; right:15px; z-index:1000;
+            background:var(--bg-panel); padding:20px; border-radius:12px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.15); max-height:90vh;
+            overflow-y:auto; width:340px; border:1px solid rgba(0,0,0,0.05);
+        }
+        h3 { margin:0 0 15px 0; font-size:18px; font-weight:700; border-bottom:2px solid #eee; padding-bottom:10px; }
+        .control-group { margin-bottom:20px; }
+        .control-group label { display:block; font-weight:600; margin-bottom:8px; font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:#555; }
+        .time-display { font-family:'Courier New',monospace; font-size:22px; font-weight:bold; color:var(--primary); text-align:center; margin-bottom:15px; background:#f8f9fa; padding:8px; border-radius:6px; border:1px solid #e9ecef; }
+        .route-badges { display:flex; gap:8px; margin-bottom:10px; }
+        .badge { flex:1; padding:8px 5px; border-radius:6px; font-size:12px; font-weight:600; text-align:center; transition:all 0.2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .badge.empty { background:#f8f9fa; color:#6c757d; border:1px dashed #ced4da; }
+        .badge.start { background:#d1e7dd; color:#0f5132; border:1px solid #badbcc; }
+        .badge.end   { background:#f8d7da; color:#842029; border:1px solid #f5c2c7; }
+        .btn { padding:10px 15px; background:var(--primary); color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:background 0.2s; width:100%; display:flex; justify-content:center; align-items:center; gap:5px; }
+        .btn:hover { background:#0b5ed7; }
+        .btn.danger { background:var(--danger); }
+        .btn.danger:hover { background:#bb2d3b; }
+        .slider-row { display:flex; align-items:center; gap:12px; }
+        .slider-labels { display:flex; justify-content:space-between; font-size:10px; color:#888; margin-top:3px; }
+        input[type=range] { flex-grow:1; cursor:pointer; }
+        select { padding:8px; border-radius:6px; border:1px solid #ccc; font-size:13px; font-weight:500; cursor:pointer; outline:none; }
+        .info-panel { background:#f8f9fa; padding:12px; border-radius:6px; font-size:13px; line-height:1.6; color:#444; border:1px solid #e9ecef; }
+        .legend-item { display:flex; align-items:center; gap:10px; font-size:13px; margin-bottom:6px; }
+        .color-box { width:14px; height:14px; border-radius:3px; }
+        .geofence-item { display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:8px; }
+        hr { border:0; border-top:1px solid #eee; margin:20px 0; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="controls">
+    <h3>GeoFlow Dashboard</h3>
+    <div class="time-display" id="time-display">--:--:--</div>
+
+    <div class="control-group">
+        <label>Route Picker</label>
+        <div class="route-badges">
+            <div id="badge-start" class="badge empty">▶ Start: —</div>
+            <div id="badge-end"   class="badge empty">⬛ End: —</div>
+        </div>
+        <button class="btn danger" onclick="resetRoute()">↺ Clear Route</button>
+        <div id="click-hint" style="font-size:11px;color:#888;text-align:center;margin-top:8px;">Click any city on the map to set Start</div>
+    </div>
+
+    <hr>
+
+    <div class="control-group">
+        <label>Simulation Playback</label>
+        <input type="range" id="time-slider" min="0" max="24" step="0.001" value="0" style="width:100%;margin-bottom:2px;">
+        <div class="slider-labels">
+            <span id="lbl-start">--:--</span>
+            <span id="lbl-end">--:--</span>
+        </div>
+        <div class="slider-row" style="margin-top:10px;">
+            <button class="btn" id="play-btn" style="flex:2;">▶ Play</button>
+            <select id="speed-sel" style="flex:1;">
+                <option value="0.0125">0.5x</option>
+                <option value="0.025" selected>1x</option>
+                <option value="0.05">1.25x</option>
+                <option value="0.1">1.5x</option>
+            </select>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="control-group">
+        <label>Geofences</label>
+        <div id="geofence-toggles"></div>
+    </div>
+
+    <div class="control-group">
+        <label>Alpha Weight: <span id="alpha-val" style="color:var(--primary);">0.5</span></label>
+        <input type="range" id="alpha-slider" min="0" max="1" step="0.05" value="0.5" style="width:100%;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:4px;">
+            <span>Cost Saver (0.0)</span><span>Time Saver (1.0)</span>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="control-group">
+        <label>Mission Status</label>
+        <div id="status-panel" class="info-panel"><i>Click two cities on the map to compute a route.</i></div>
+    </div>
+
+    <hr>
+
+    <div class="control-group">
+        <label>Legend</label>
+        <div id="legend"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script id="geoflow-data" type="application/json">{"nodes": {"Philadelphia": {"lat": 39.9526, "lon": -75.1652, "allows": ["Truck", "Van", "Rail"], "is_hypothetical": false}, "Baltimore": {"lat": 39.2904, "lon": -76.6122, "allows": ["Truck", "Van", "Rail"], "is_hypothetical": false}, "WashingtonDC": {"lat": 38.9072, "lon": -77.0369, "allows": ["Truck", "Van", "Rail"], "is_hypothetical": false}, "Wilmington": {"lat": 39.7447, "lon": -75.5484, "allows": ["Truck", "Van"], "is_hypothetical": false}, "Trenton": {"lat": 40.2171, "lon": -74.7429, "allows": ["Truck", "Van"], "is_hypothetical": false}, "Newark": {"lat": 40.7357, "lon": -74.1724, "allows": ["Truck", "Van", "Rail"], "is_hypothetical": false}, "CandidateDC_1": {"lat": 39.622400000000006, "lon": -75.82112000000001, "allows": ["Truck", "Rail", "Van", "Walking"], "is_hypothetical": false}, "NewRegionalDC": {"lat": 39.7455, "lon": -75.5687, "allows": ["Truck", "Rail", "Van", "Walking"], "is_hypothetical": false}}, "modes": {"Walking": {"speed": 5.0, "cost": 0.0, "color": "#888888"}, "Truck": {"speed": 90.0, "cost": 3.5, "color": "#e6194b"}, "Rail": {"speed": 140.0, "cost": 1.2, "color": "#3cb44b"}, "Van": {"speed": 55.0, "cost": 2.8, "color": "#ffe119"}}, "routes": {}, "geofences": {"UrbanCongestionZone": {"bounds": [[40.1, -77.2], [40.1, -74.5], [38.7, -74.5], [38.7, -77.2]], "blocks": [], "rules": {"reduce_speed": {"Truck": 0.6, "Van": 0.55}, "increase_cost": {"Truck": 1.4, "Van": 1.35}}, "activate_at": "07:00", "active": true}}, "mission": {"name": "Imperative Route", "start": "NewRegionalDC", "end": "WashingtonDC", "start_time": "08:00", "alpha": 1.0}, "path": [["NewRegionalDC", null, 0.0, 0.0, 0.0], ["WashingtonDC", "Rail (NEW)", 1.1211357117018543, 188.3507995659115, 1.1211357117018543]], "timeline": [{"time": 0.0, "node": "NewRegionalDC", "lat": 39.7455, "lon": -75.5687, "mode": "START", "action": "departure"}, {"time": 1.1211357117018543, "node": "WashingtonDC", "lat": 38.9072, "lon": -77.0369, "mode": "Rail (NEW)", "cost_incurred": 188.3507995659115, "action": "arrival"}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('geoflow-data').textContent);
+
+function parseTime(tStr) {
+    if (typeof tStr === 'number') return tStr;
+    if (!tStr) return 0;
+    const pts = String(tStr).split(':');
+    return parseInt(pts[0]) + (parseInt(pts[1]) || 0) / 60.0;
+}
+
+function formatTime(tHrs) {
+    if (isNaN(tHrs) || tHrs == null) return '--:--:--';
+    const h = Math.floor(tHrs);
+    const m = Math.floor((tHrs - h) * 60);
+    const s = Math.floor((((tHrs - h) * 60) - m) * 60);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(a));
+}
+
+// FIX: Corrected Point In Polygon Math
+function pointInPolygon(point, vs) {
+    let inside = false;
+    let x = point[0], y = point[1]; // x=lat, y=lon
+    for (let i=0, j=vs.length-1; i<vs.length; j=i++) {
+        const xi=vs[i][0], yi=vs[i][1], xj=vs[j][0], yj=vs[j][1];
+        if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside=!inside;
+    }
+    return inside;
+}
+
+// FIX: Line Segment Intersection (Catches lines crossing the geofence)
+function segmentsIntersect(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y) {
+    let det = (p2x - p1x) * (p4y - p3y) - (p4x - p3x) * (p2y - p1y);
+    if (det === 0) return false; 
+    let lambda = ((p4y - p3y) * (p4x - p1x) + (p3x - p4x) * (p4y - p1y)) / det;
+    let gamma = ((p1y - p2y) * (p4x - p1x) + (p2x - p1x) * (p4y - p1y)) / det;
+    return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
+}
+
+function lineIntersectsPolygon(p1, p2, poly) {
+    if (pointInPolygon(p1, poly) || pointInPolygon(p2, poly)) return true;
+    for (let i = 0; i < poly.length; i++) {
+        let p3 = poly[i];
+        let p4 = poly[(i + 1) % poly.length];
+        if (segmentsIntersect(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], p4[0], p4[1])) return true;
+    }
+    return false;
+}
+
+const journeyStart = parseTime(DATA.mission.start_time || '08:00');
+let pathTotalHrs = 0;
+if (Array.isArray(DATA.path)) {
+    DATA.path.forEach(p => {
+        const t = parseFloat(p[2]);
+        if (!isNaN(t) && t > 0) pathTotalHrs += t;
+    });
+}
+// FIX: journeyEnd is now mutable so it can shrink to fit short routes
+let journeyEnd = (pathTotalHrs > 0) ? journeyStart + pathTotalHrs : journeyStart + 16;
+
+let simTime       = journeyStart;
+let isPlaying     = false;
+let lastTimestamp = 0;
+
+const timeDisplay     = document.getElementById('time-display');
+const timeSlider      = document.getElementById('time-slider');
+const playBtn         = document.getElementById('play-btn');
+const speedSel        = document.getElementById('speed-sel');
+const alphaSlider     = document.getElementById('alpha-slider');
+const alphaVal        = document.getElementById('alpha-val');
+const statusPanel     = document.getElementById('status-panel');
+const toggleContainer = document.getElementById('geofence-toggles');
+const legendContainer = document.getElementById('legend');
+const lblStart        = document.getElementById('lbl-start');
+const lblEnd          = document.getElementById('lbl-end');
+
+timeSlider.min   = journeyStart;
+timeSlider.max   = journeyEnd;
+timeSlider.step  = 0.001;
+timeSlider.value = journeyStart;
+lblStart.innerText = formatTime(journeyStart);
+lblEnd.innerText   = formatTime(journeyEnd);
+timeDisplay.innerText = formatTime(journeyStart);
+
+let map;
+const layers = {
+    nodes: L.layerGroup(), edges: L.layerGroup(), geofences: L.layerGroup(),
+    vehicles: L.layerGroup(), userPath: L.layerGroup(), userAgent: L.layerGroup()
+};
+let graphEdges = {}, routeCycleTimes = {}, routeOffsets = {};
+let activePathBlocks = null;
+let selectedStart = null, selectedEnd = null, nodeMarkers = {};
+
+function animLoop(timestamp) {
+    try {
+        if (isPlaying) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            let deltaMs = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            if (deltaMs > 100) deltaMs = 16;               // guard tab-switch spike
+
+            simTime += (deltaMs / 1000) * parseFloat(speedSel.value);
+            if (simTime >= journeyEnd) simTime = journeyStart;  // wrap
+
+            timeSlider.value = simTime;
+            timeDisplay.innerText = formatTime(simTime);
+            updateDynamicPositions();
+            checkGeofenceTriggers();
+        } else {
+            lastTimestamp = 0;
+        }
+    } catch(e) {
+        console.error("Animation Loop Crash: ", e);
+    }
+    requestAnimationFrame(animLoop);
+}
+
+timeSlider.oninput = e => {
+    simTime = parseFloat(e.target.value);
+    timeDisplay.innerText = formatTime(simTime);
+    updateDynamicPositions();
+    checkGeofenceTriggers();
+};
+
+playBtn.onclick = () => {
+    isPlaying = !isPlaying;
+    playBtn.innerText = isPlaying ? '⏸ Pause' : '▶ Play';
+    if (isPlaying) lastTimestamp = 0;
+};
+
+alphaSlider.oninput = e => {
+    alphaVal.innerText = parseFloat(e.target.value).toFixed(2);
+    DATA.mission.alpha = parseFloat(e.target.value);
+    recomputePath();
+};
+
+function updateRoutePicker() {
+    const bs = document.getElementById('badge-start'), be = document.getElementById('badge-end'), hint = document.getElementById('click-hint');
+    if (selectedStart) { bs.className='badge start'; bs.innerText=`▶ ${selectedStart}`; } else { bs.className='badge empty'; bs.innerText='▶ Start: —'; }
+    if (selectedEnd)   { be.className='badge end';   be.innerText=`⬛ ${selectedEnd}`;  } else { be.className='badge empty'; be.innerText='⬛ End: —'; }
+    hint.innerText = !selectedStart ? 'Click a city to set the Start point' : !selectedEnd ? 'Click a destination city for the End point' : 'Route generated! Click any city to start over.';
+    redrawNodeMarkers();
+}
+
+function resetRoute() {
+    selectedStart=null; selectedEnd=null; activePathBlocks=null;
+    layers.userPath.clearLayers(); layers.userAgent.clearLayers();
+    statusPanel.innerHTML='<i>Click two cities on the map to compute a route.</i>';
+    updateRoutePicker();
+}
+
+function onNodeClick(n_id) {
+    if (!selectedStart||(selectedStart&&selectedEnd)) { selectedStart=n_id; selectedEnd=null; activePathBlocks=null; layers.userPath.clearLayers(); }
+    else if (n_id===selectedStart) { selectedStart=null; }
+    else { selectedEnd=n_id; recomputePath(); }
+    updateRoutePicker();
+}
+
+function redrawNodeMarkers() {
+    layers.nodes.clearLayers(); nodeMarkers={};
+    for (const n_id in DATA.nodes) {
+        const n=DATA.nodes[n_id], isS=(n_id===selectedStart), isE=(n_id===selectedEnd);
+        const fill=isS?'#198754':isE?'#dc3545':n.is_hypothetical?'#ffc107':'white';
+        let tip=`<b>${n_id}</b>`;
+        if (n.is_hypothetical) tip+=`<br><span style="color:#856404;font-size:10px;">★ AI Hub</span>`;
+        if (isS) tip+='<br>🟢 START'; if (isE) tip+='<br>🔴 END';
+        const m=L.circleMarker([n.lat,n.lon],{radius:isS||isE?9:6,color:'#333',fillColor:fill,fillOpacity:1,weight:isS||isE?3:2,zIndexOffset:isS||isE?500:n.is_hypothetical?100:0}).bindTooltip(tip);
+        m.on('click',()=>onNodeClick(n_id));
+        m.addTo(layers.nodes); nodeMarkers[n_id]=m;
+    }
+}
+
+class PriorityQueue {
+    constructor(){this.items=[];}
+    enqueue(el,pr){let i=0;while(i<this.items.length&&this.items[i].priority<=pr)i++;this.items.splice(i,0,{element:el,priority:pr});}
+    dequeue(){return this.items.shift();}
+    isEmpty(){return this.items.length===0;}
+}
+
+function rebuildGraph() {
+    graphEdges={}; routeCycleTimes={}; routeOffsets={};
+    for (const m_name of Object.keys(DATA.modes)) {
+        for (const u in DATA.nodes) for (const v in DATA.nodes) {
+            if (u===v) continue;
+            const ua=DATA.nodes[u].allows||[], va=DATA.nodes[v].allows||[];
+            if (!ua.includes('All')&&!ua.includes(m_name)&&m_name!=='Walking') continue;
+            if (!va.includes('All')&&!va.includes(m_name)&&m_name!=='Walking') continue;
+            if (!graphEdges[u]) graphEdges[u]=[];
+            graphEdges[u].push({to:v,mode:m_name,route:null,dist:haversine(DATA.nodes[u].lat,DATA.nodes[u].lon,DATA.nodes[v].lat,DATA.nodes[v].lon)});
+        }
+    }
+    for (const r_name in DATA.routes) {
+        const r=DATA.routes[r_name], mode=DATA.modes[r.mode]; if (!mode) continue;
+        let offset=0; routeOffsets[r_name]={};
+        for (let i=0;i<r.stops.length;i++) {
+            const u=r.stops[i], v=r.stops[(i+1)%r.stops.length];
+            if (!routeOffsets[r_name][u]) routeOffsets[r_name][u]=offset;
+            if (u===v) continue;
+            const dist=haversine(DATA.nodes[u].lat,DATA.nodes[u].lon,DATA.nodes[v].lat,DATA.nodes[v].lon);
+            if (!graphEdges[u]) graphEdges[u]=[];
+            graphEdges[u].push({to:v,mode:r.mode,route:r_name,dist});
+            offset+=dist/mode.speed;
+        }
+        routeCycleTimes[r_name]=offset;
+    }
+}
+
+function getEdgeMetrics(u,v,mode,abs_time,dist) {
+    let spd=DATA.modes[mode].speed||0.0001, cst=DATA.modes[mode].cost||0, sm=1, cm=1, blocked=false;
+    const n1=DATA.nodes[u], n2=DATA.nodes[v];
+    for (const g_name in DATA.geofences) {
+        const g=DATA.geofences[g_name]; if (!g.active) continue;
+        if (abs_time>=parseTime(g.activate_at||'00:00')) {
+            // FIX: Check if the road intersects the geofence perimeter
+            if (lineIntersectsPolygon([n1.lat, n1.lon], [n2.lat, n2.lon], g.bounds)) {
+                const r=g.rules||{};
+                if (g.blocks?.includes(mode)||r.block?.includes(mode)) blocked=true;
+                if (r.allow_only&&!r.allow_only.includes(mode)) blocked=true;
+                if (r.reduce_speed?.[mode]) sm*=r.reduce_speed[mode];
+                if (r.increase_cost?.[mode]) cm*=r.increase_cost[mode];
+            }
+        }
+    }
+    const fs=spd*sm; if (blocked||fs<=0) return null;
+    return {time:dist/fs, cost:dist*cst*cm};
+}
+
+function getWaitTime(route,stop,abs_time) {
+    if (!route) return 0;
+    const ct=routeCycleTimes[route], off=routeOffsets[route]?.[stop]; if (!ct) return 0;
+    const diff=off-(abs_time%ct); return diff<0?diff+ct:diff;
+}
+
+function drawStaticElements() {
+    layers.edges.clearLayers();
+    const drawn=new Set();
+    for (const u in graphEdges) for (const edge of graphEdges[u]) {
+        if (!edge.route) continue;
+        const h1=`${u}-${edge.to}-${edge.mode}`, h2=`${edge.to}-${u}-${edge.mode}`;
+        if (drawn.has(h1)||drawn.has(h2)) continue; drawn.add(h1);
+        const n1=DATA.nodes[u], n2=DATA.nodes[edge.to]; if (!n1||!n2) continue;
+        L.polyline([[n1.lat,n1.lon],[n2.lat,n2.lon]],{color:DATA.modes[edge.mode]?.color||'#888',weight:3,opacity:0.5}).bindTooltip(`<b>${edge.route}</b> · ${edge.mode}`).addTo(layers.edges);
+    }
+    redrawNodeMarkers(); drawGeofences();
+}
+
+function drawGeofences() {
+    layers.geofences.clearLayers();
+    const cols=['#ff4d4d','#ffcc00','#33cc33','#3399ff','#cc33ff']; let idx=0;
+    for (const g_name in DATA.geofences) {
+        const g=DATA.geofences[g_name], c=g.active?cols[idx%cols.length]:'#ccc';
+        const poly=L.polygon(g.bounds.map(b=>[b[0],b[1]]),{color:c,fillColor:c,fillOpacity:0.15,weight:2,g_ref:g}).bindTooltip(`<b>${g_name}</b>`);
+        poly.addTo(layers.geofences); idx++;
+    }
+}
+
+let lastGeofenceMask='';
+function checkGeofenceTriggers() {
+    let mask='';
+    for (const g_name in DATA.geofences) { const g=DATA.geofences[g_name]; mask+=(g.active&&simTime>=parseTime(g.activate_at||'00:00'))?'1':'0'; }
+    if (mask!==lastGeofenceMask) { lastGeofenceMask=mask; updateGeofenceStyles(); if (activePathBlocks) recomputePath(); }
+}
+
+function updateGeofenceStyles() {
+    const cols=['#ff4d4d','#ffcc00','#33cc33','#3399ff','#cc33ff']; let idx=0;
+    layers.geofences.eachLayer(layer=>{
+        const g=layer.options.g_ref; if (!g) return;
+        const on=g.active&&simTime>=parseTime(g.activate_at||'00:00'), c=g.active?cols[idx%cols.length]:'#ccc';
+        layer.setStyle({color:c,fillColor:c,fillOpacity:on?0.35:0.05,weight:on?2:1,dashArray:on?'':'5,5'}); idx++;
+    });
+}
+
+function loadPythonPath() {
+    if (!DATA.path||DATA.path.length<2) return false;
+    let blocks=[], tTotal=0, cTotal=0;
+    for (const p of DATA.path) {
+        const node=String(p[0]), mode=String(p[1]||'Walking'), t=parseFloat(p[2])||0, c=parseFloat(p[3])||0;
+        tTotal+=t; cTotal+=c;
+        blocks.push({node,mode,t_step:t,c_step:c,wait:0,travel:t});
+    }
+    activePathBlocks=blocks;
+    
+    // FIX: Adapt Slider to Python path limits
+    const t0 = parseTime(DATA.mission.start_time||'08:00');
+    journeyEnd = t0 + tTotal;
+    if (journeyEnd <= t0) journeyEnd = t0 + 0.1;
+    timeSlider.max = journeyEnd;
+    lblEnd.innerText = formatTime(journeyEnd);
+
+    layers.userPath.clearLayers();
+    let html=`<strong style="color:var(--primary);">Route Loaded</strong><br>Time: <b>${tTotal.toFixed(2)} hrs</b> | Cost: <b>$${cTotal.toFixed(2)}</b><div style="font-size:12px;margin-top:8px;border-left:2px solid #ccc;padding-left:8px;">`;
+    let last=null;
+    for (const step of blocks) {
+        if (!last){last=step.node;continue;}
+        const n1=DATA.nodes[last], n2=DATA.nodes[step.node];
+        if (n1&&n2) L.polyline([[n1.lat,n1.lon],[n2.lat,n2.lon]],{color:DATA.modes[step.mode]?.color||'#555',weight:6,opacity:0.9}).bindTooltip(`${step.mode} · ${step.t_step.toFixed(2)}h ·$${step.c_step.toFixed(2)}`).addTo(layers.userPath);
+        html+=`➜ <b>${step.node}</b> <span style="color:#666;">(${step.mode})</span><br>`;
+        last=step.node;
+    }
+    statusPanel.innerHTML=html+'</div>';
+    updateDynamicPositions();
+    return true;
+}
+
+function recomputePath() {
+    if (!selectedStart||!selectedEnd) return;
+    const alpha=DATA.mission.alpha, t0=parseTime(DATA.mission.start_time||'08:00');
+    const pq=new PriorityQueue();
+    pq.enqueue({node:selectedStart,timeSoFar:0,costSoFar:0,path:[{node:selectedStart,mode:null,t_step:0,c_step:0,wait:0,travel:0}]},0);
+    const visited={}; let optimal=null;
+    while (!pq.isEmpty()) {
+        const curr=pq.dequeue(), u=curr.element.node, w=curr.priority;
+        if (u===selectedEnd){optimal=curr.element;break;}
+        if (visited[u]&&visited[u]<=w) continue; visited[u]=w;
+        const abs=t0+curr.element.timeSoFar;
+        for (const edge of (graphEdges[u]||[])) {
+            const wait=getWaitTime(edge.route,u,abs);
+            const met=getEdgeMetrics(u,edge.to,edge.mode,abs+wait,edge.dist); if (!met) continue;
+            const ts=wait+met.time, cs=met.cost, nw=w+(alpha*ts*50)+((1-alpha)*cs);
+            if (!visited[edge.to]||visited[edge.to]>nw)
+                pq.enqueue({node:edge.to,timeSoFar:curr.element.timeSoFar+ts,costSoFar:curr.element.costSoFar+cs,path:[...curr.element.path,{node:edge.to,mode:edge.mode,route:edge.route,t_step:ts,c_step:cs,wait,travel:met.time}]},nw);
+        }
+    }
+    layers.userPath.clearLayers();
+    if (optimal) {
+        activePathBlocks=optimal.path;
+        
+        // FIX: Adapt Slider to newly calculated limits
+        journeyEnd = t0 + optimal.timeSoFar;
+        if (journeyEnd <= t0) journeyEnd = t0 + 0.1;
+        timeSlider.max = journeyEnd;
+        lblEnd.innerText = formatTime(journeyEnd);
+        if (simTime > journeyEnd) simTime = t0;
+
+        let html=`<strong style="color:var(--success);">Optimal Path Found!</strong><br>Time: <b>${optimal.timeSoFar.toFixed(2)} hrs</b> | Cost: <b>$${optimal.costSoFar.toFixed(2)}</b><div style="font-size:12px;margin-top:8px;border-left:2px solid #ccc;padding-left:8px;">`;
+        let last=null;
+        for (const step of optimal.path) {
+            if (!last){last=step.node;continue;}
+            const n1=DATA.nodes[last],n2=DATA.nodes[step.node];
+            if (n1&&n2) L.polyline([[n1.lat,n1.lon],[n2.lat,n2.lon]],{color:DATA.modes[step.mode]?.color||'#555',weight:6,opacity:0.9,dashArray:step.route?'':'10,10'}).bindTooltip(`${step.mode} · wait ${step.wait.toFixed(2)}h · travel ${step.travel.toFixed(2)}h`).addTo(layers.userPath);
+            html+=`➜ <b>${step.node}</b> <span style="color:#666;">(${step.mode})</span><br>`;
+            last=step.node;
+        }
+        statusPanel.innerHTML=html+'</div>';
+    } else {
+        activePathBlocks=null;
+        statusPanel.innerHTML=`<span style="color:var(--danger);font-weight:bold;">No path available.</span><br>Geofences may be blocking flow.`;
+    }
+    updateDynamicPositions();
+}
+
+function interpolateVehicle(r_name, t) {
+    const ct=routeCycleTimes[r_name]; if (!ct) return null;
+    const tm=t%ct, r=DATA.routes[r_name], m=DATA.modes[r.mode]; let cur=0;
+    for (let i=0;i<r.stops.length;i++) {
+        const u=r.stops[i],v=r.stops[(i+1)%r.stops.length];
+        const seg=haversine(DATA.nodes[u].lat,DATA.nodes[u].lon,DATA.nodes[v].lat,DATA.nodes[v].lon)/m.speed;
+        if (tm>=cur&&tm<=cur+seg) {
+            const p=(tm-cur)/seg, n1=DATA.nodes[u], n2=DATA.nodes[v];
+            return {lat:n1.lat+(n2.lat-n1.lat)*p, lon:n1.lon+(n2.lon-n1.lon)*p, mode:r.mode, from:u, to:v};
+        }
+        cur+=seg;
+    }
+    return null;
+}
+
+function interpolateUser(t) {
+    if (!activePathBlocks||activePathBlocks.length<2) return null;
+    const t0=parseTime(DATA.mission.start_time||'08:00');
+    if (t<t0) return {lat:DATA.nodes[activePathBlocks[0].node].lat, lon:DATA.nodes[activePathBlocks[0].node].lon, status:'Awaiting Dispatch'};
+    let acc=t0;
+    for (let i=1;i<activePathBlocks.length;i++) {
+        const step=activePathBlocks[i];
+        if (t>=acc&&t<=acc+step.wait) return {lat:DATA.nodes[activePathBlocks[i-1].node].lat, lon:DATA.nodes[activePathBlocks[i-1].node].lon, status:`Waiting for ${step.mode}`};
+        acc+=step.wait;
+        if (t>=acc&&t<=acc+step.travel) {
+            const p=(t-acc)/step.travel, n1=DATA.nodes[activePathBlocks[i-1].node], n2=DATA.nodes[step.node];
+            return {lat:n1.lat+(n2.lat-n1.lat)*p, lon:n1.lon+(n2.lon-n1.lon)*p, status:`Traveling via ${step.mode}`};
+        }
+        acc+=step.travel;
+    }
+    const last=activePathBlocks[activePathBlocks.length-1];
+    return {lat:DATA.nodes[last.node].lat, lon:DATA.nodes[last.node].lon, status:'Arrived!'};
+}
+
+function updateDynamicPositions() {
+    layers.vehicles.clearLayers(); layers.userAgent.clearLayers();
+    for (const r in DATA.routes) {
+        const pos=interpolateVehicle(r,simTime); if (!pos) continue;
+        L.circleMarker([pos.lat,pos.lon],{radius:5,color:'#fff',weight:1,fillColor:DATA.modes[pos.mode].color,fillOpacity:1}).bindTooltip(`<b>${r}</b><br>${pos.from}→${pos.to}`).addTo(layers.vehicles);
+    }
+    const up=interpolateUser(simTime);
+    if (up) {
+        const icon=L.divIcon({html:`<div style="background:var(--primary);width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 0 8px rgba(0,0,0,0.6);"></div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
+        L.marker([up.lat,up.lon],{icon,zIndexOffset:1000}).bindTooltip(`<b>DELIVERY</b><br>${up.status}`).addTo(layers.userAgent);
+    }
+}
+
+function setupGeofenceUI() {
+    if (!Object.keys(DATA.geofences).length) { toggleContainer.innerHTML="<span style='font-size:12px;color:#888;'>No geofences.</span>"; return; }
+    for (const g_name in DATA.geofences) {
+        const g=DATA.geofences[g_name], item=document.createElement('div'); item.className='geofence-item';
+        const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=g.active;
+        cb.onchange=e=>{g.active=e.target.checked; rebuildGraph(); drawGeofences(); recomputePath();};
+        item.appendChild(cb);
+        const lbl=document.createElement('span'); lbl.innerText=`${g_name} [${g.blocks.join(', ')||'No blocks'}]`;
+        item.appendChild(lbl); toggleContainer.appendChild(item);
+    }
+}
+
+function setupLegend() {
+    for (const m in DATA.modes) {
+        const item=document.createElement('div'); item.className='legend-item';
+        item.innerHTML=`<div class="color-box" style="background:${DATA.modes[m].color}"></div><span>${m}</span>`;
+        legendContainer.appendChild(item);
+    }
+}
+
+function init() {
+    const bounds=L.latLngBounds();
+    for (const n_id in DATA.nodes) bounds.extend([DATA.nodes[n_id].lat,DATA.nodes[n_id].lon]);
+    map=L.map('map',{zoomControl:false});
+    L.control.zoom({position:'topleft'}).addTo(map);
+    map.fitBounds(bounds,{padding:[50,50]});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap | GeoFlow',maxZoom:19}).addTo(map);
+    for (const k in layers) map.addLayer(layers[k]);
+
+    if (DATA.mission.alpha!=null) { alphaSlider.value=DATA.mission.alpha; alphaVal.innerText=parseFloat(DATA.mission.alpha).toFixed(2); }
+
+    setupGeofenceUI(); setupLegend(); rebuildGraph(); drawStaticElements();
+
+    if (DATA.path&&DATA.path.length>0) {
+        selectedStart=String(DATA.path[0][0]);
+        selectedEnd=String(DATA.path[DATA.path.length-1][0]);
+        updateRoutePicker();
+        loadPythonPath();
+    } else {
+        updateRoutePicker();
+    }
+
+    requestAnimationFrame(animLoop);
+}
+
+init();
+</script>
+</body>
+</html>
