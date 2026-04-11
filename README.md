@@ -2,9 +2,9 @@
 
 ## Overview
 
-GeoFlow-SWE is a declarative, compiled domain-specific language (DSL) implemented in OCaml for modeling and simulating multimodal transportation and logistics networks. It allows users to express routing problems using high-level constraints, which are compiled into an optimized graph-based routing engine along with a structured visualization output.
+GeoFlow-SWE is a declarative, compiled domain-specific language (DSL) implemented in Python for modeling and simulating multimodal transportation and logistics networks. It allows users to express routing problems using high-level constraints, which are compiled into an optimized graph-based routing engine along with a structured visualization output.
 
-The system is designed to bridge the gap between human-readable specifications and efficient execution of complex routing and simulation tasks.
+The system bridges the gap between human-readable specifications and efficient execution of complex routing and simulation tasks.
 
 ## Motivation
 
@@ -40,23 +40,23 @@ GeoFlow-SWE provides a structured DSL for defining the components of a transport
 
 ### Multimodal Routing
 
-The system supports multiple transport modes and automatically handles transitions between them by introducing transfer costs and constraints.
+Supports multiple transport modes and automatically handles transitions between them using transfer costs and constraints.
 
 ### Time-Dependent Routing
 
-Routing decisions depend on arrival times. Schedules at nodes influence path selection, enabling realistic modeling of delays and waiting times.
+Routing decisions depend on arrival times. Node schedules influence path selection, enabling realistic modeling of delays and waiting times.
 
 ### Multi-Objective Optimization
 
-Instead of returning a single solution, the system computes a set of optimal trade-offs (Pareto frontier), such as fastest, cheapest, and balanced routes.
+Computes a set of optimal trade-offs (Pareto frontier), such as fastest, cheapest, and balanced routes.
 
 ### Geospatial Constraints
 
-Geofences influence routing by restricting movement or applying penalties such as increased cost or energy usage.
+Geofences restrict movement or apply penalties such as increased cost or energy usage.
 
 ### Event-Driven Behavior
 
-The DSL supports monitoring conditions and triggering fallback actions such as rerouting or waiting.
+Supports monitoring conditions and triggering fallback actions such as rerouting or waiting.
 
 ## System Architecture
 
@@ -65,45 +65,66 @@ The system follows a compilation pipeline:
 1. DSL Input
    User-defined script describing the network and constraints
 
-2. Parsing and Compilation
-   The DSL is parsed and converted into an internal representation
+2. Parsing
+   The DSL is parsed using the grammar definition
 
-3. Graph Construction
-   A multigraph is built with nodes, edges, and constraints
+3. Transformation
+   Parsed data is converted into an internal representation
 
-4. Routing Engine
-   Optimized graph traversal algorithms (such as A*) compute routes
+4. Execution
+   Graph construction and routing algorithms compute optimal paths
 
 5. Output Generation
-   The system produces executable routing logic and visualization data
-
-## Input Parameters
-
-The DSL allows users to define:
-
-* Vehicle properties: speed, cost, energy, payload
-* Network structure: nodes and connectivity
-* Constraints: schedules, geofences, limits
-* Optimization parameters: time vs cost or energy trade-offs
-
-## Output
-
-The compiler generates two main artifacts:
-
-* Routing Engine
-  A highly optimized in-memory graph with a tailored search algorithm capable of handling constraints and multi-objective optimization.
-
-* Visualizer Payload
-  Structured JSON or GeoJSON data describing nodes, routes, and constraints, which can be rendered in a web-based interface.
+   The system produces visualization data and results
 
 ## Project Structure
 
 geoflow-swe/
 
-* src/ : core compiler and routing logic
-* examples/ : sample DSL programs
-* output/ : generated results and visualizations
-* docs/ : supporting documentation
+* .github/workflows/ : GitHub Actions for linting and automation
+
+* geoflow/           : core implementation of the DSL and routing logic
+
+* semantic/          : semantic analysis and validation components
+
+* tests/             : unit tests for the system
+
+* outputs/           : generated HTML dashboards and results
+
+* grammar.lark       : DSL grammar definition
+
+* parser.py          : parses DSL input into structured form
+
+* transformer.py     : transforms parsed data into internal representation
+
+* interpreter.py     : executes the DSL and routing logic
+
+* main.py            : entry point to run the project
+
+* README.md          : project documentation
+
+## Installation
+
+Clone the repository:
+
+```bash id="b7t3mj"
+git clone https://github.com/akshitha-vangala/geoflow-swe.git
+cd geoflow-swe
+```
+
+Install dependencies:
+
+```bash id="r1l0fc"
+pip install -r requirements.txt
+```
+
+## Usage
+
+Run the project using:
+
+```bash id="1rc3yx"
+python main.py
+```
 
 ## Applications
 
