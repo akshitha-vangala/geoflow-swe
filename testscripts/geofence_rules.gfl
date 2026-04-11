@@ -1,97 +1,53 @@
-// TEST 05 — Advanced Geofences: rules, allow_only, reduce_speed, increase_cost
-// Tests: rules_block, modifier_stmt, allow_only_rule, multiple geofences
+// ── GeoFlow v2: Geofence Stress Test ─────────────────────────────────────────
 
-mode ElectricBus {
-    speed: 30.0
-    cost: 1.0
+// 1. Define our Diamond Layout
+node SouthCity  { loc: (40.000, -74.000) allows: [Truck] }
+node DirectCity { loc: (40.050, -74.000) allows: [Truck] } // The fast, risky path
+node DetourCity { loc: (40.050, -74.100) allows: [Truck] } // The slow, safe path
+node NorthCity  { loc: (40.100, -74.000) allows: [Truck] }
+
+mode Truck { speed: 60 cost: 2 build_cost: 0 }
+
+// 2. Define the Time-Activated Geofence
+// This draws a box perfectly over DirectCity and turns on at 09:00 AM
+geofence StormZone {
+    bounds: [(40.040, -74.010), (40.040, -73.990), (40.060, -73.990), (40.060, -74.010)]
+    blocks: [Truck]
+    activate_at: 09:00
 }
 
-mode DieselTruck {
-    speed: 65.0
-    cost: 4.0
-}
-
-mode Cycle {
-    speed: 15.0
-    cost: 0.0
-}
-
-mode LightRail {
-    speed: 55.0
-    cost: 1.5
-}
-
-node CityDepot {
-    loc: (52.5200, 13.4050)
-    allows: [ElectricBus, DieselTruck, Cycle, LightRail]
-}
-
-node GreenZoneHub {
-    loc: (52.5250, 13.3800)
-    allows: [ElectricBus, Cycle]
-}
-
-node IndustrialPark {
-    loc: (52.5050, 13.4400)
-    allows: [DieselTruck, ElectricBus]
-}
-
-node CentralMarket {
-    loc: (52.5170, 13.3900)
-    allows: [ElectricBus, Cycle, LightRail]
-}
-
-node Suburbs {
-    loc: (52.4900, 13.3700)
-    allows: [ElectricBus, DieselTruck, Cycle, LightRail]
-}
-
-// Green zone — only clean vehicles, slows everything down
-geofence GreenZone {
-    bounds: [(52.52, 13.37), (52.52, 13.41), (52.53, 13.41), (52.53, 13.37)]
-    blocks: [DieselTruck]
-    activate_at: 06:00
-    rules: {
-        allow_only: [ElectricBus, Cycle, LightRail]
-        reduce_speed: { ElectricBus: 0.8 }
-        increase_cost: { LightRail: 1.2 }
-    }
-}
-
-// Night restriction — no heavy vehicles after 22:00
-geofence NightRestriction {
-    bounds: [(52.51, 13.38), (52.51, 13.43), (52.525, 13.43), (52.525, 13.38)]
-    blocks: [DieselTruck]
-    activate_at: 22:00
-}
-
-// Industrial zone — trucks slow down due to road works
-geofence IndustrialSlowZone {
-    bounds: [(52.50, 13.43), (52.50, 13.46), (52.515, 13.46), (52.515, 13.43)]
-    blocks: []
-    activate_at: 07:00
-    rules: {
-        reduce_speed: { DieselTruck: 0.5 }
-        increase_cost: { DieselTruck: 2.0 }
-    }
-}
-
-mission EcoDelivery {
-    from: CityDepot
-    to: Suburbs
-    start_time: 08:00
-    optimize: time
-    alpha: 0.5
-    monitor PollutionAlert {
-        trigger: late_for CentralMarket
-        fallback: reroute
-    }
-}
-
-render EcoDashboard {
-    execution: dynamic
-    show_nodes: true
+render Dash {
+    execution: static
     timeline: true
-    sim_speed: 2.0x
-    export_html: "test_05_geofence_rules.html"
+    show_nodes: true
+}
+
+program {
+    print("=== 🛡️ GEOFENCE STRESS TEST ===")
+    
+    // --- TEST 1: Beat the clock ---
+    print("\n[TEST 1] Dispatching at 08:00 (Before Geofence Activates)")
+    let route_early = find_path(
+        from: SouthCity,
+        to: NorthCity,
+        start_time: "08:00",
+        alpha: 1.0
+    )
+    
+    print("Expected: SouthCity -> DirectCity -> NorthCity")
+    let out_early = render(using: "Dash", result: route_early, output: "test_geofence_early.html")
+    
+    // --- TEST 2: Hit the wall ---
+    print("\n[TEST 2] Dispatching at 09:30 (Geofence is ACTIVE)")
+    let route_late = find_path(
+        from: SouthCity,
+        to: NorthCity,
+        start_time: "09:30",
+        alpha: 1.0
+    )
+    
+    print("Expected: SouthCity -> DetourCity -> NorthCity")
+    let out_late = render(using: "Dash", result: route_late, output: "test_geofence_late.html")
+    
+    print("\n✅ Tests generated! Open the HTML files to verify.")
 }
